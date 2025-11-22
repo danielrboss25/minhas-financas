@@ -1,0 +1,15 @@
+{
+  "cli": {
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "node": "18.18.2",
+      "env": {
+        "EAS_NPM_USE_CI": "0"
+      }
+    }
+  }
+}

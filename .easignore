@@ -1,0 +1,12 @@
+node_modules
+.expo
+dist
+build
+*.log
+
+!package.json
+!package-lock.json
+!app.json
+!eas.json
+!babel.config.js
+!tsconfig.json
