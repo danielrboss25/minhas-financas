@@ -5,7 +5,17 @@ type BudgetState = {
   setBudget: (monthKey: string, amount: number) => void;
 };
 
-export const useBudget = create<BudgetState>((set) => ({
-  budgetByMonth: {},
-  setBudget: (m, a) => set(s => ({ budgetByMonth: { ...s.budgetByMonth, [m]: a } }))
-}));
+export const useBudget = create<BudgetState>()(
+  (set) => ({
+    budgetByMonth: {},
+
+    setBudget: (monthKey: string, amount: number) =>
+      set((state) => ({
+        ...state,
+        budgetByMonth: {
+          ...state.budgetByMonth,
+          [monthKey]: amount,
+        },
+      })),
+  })
+);
