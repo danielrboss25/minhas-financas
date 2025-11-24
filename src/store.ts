@@ -1,4 +1,6 @@
+// src/store.ts
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 type BudgetState = {
   budgetByMonth: Record<string, number>;
@@ -6,16 +8,20 @@ type BudgetState = {
 };
 
 export const useBudget = create<BudgetState>()(
-  (set) => ({
-    budgetByMonth: {},
+  persist(
+    (set) => ({
+      budgetByMonth: {},
 
-    setBudget: (monthKey: string, amount: number) =>
-      set((state) => ({
-        ...state,
-        budgetByMonth: {
-          ...state.budgetByMonth,
-          [monthKey]: amount,
-        },
-      })),
-  })
+      setBudget: (monthKey, amount) =>
+        set((state) => ({
+          budgetByMonth: {
+            ...state.budgetByMonth,
+            [monthKey]: amount,
+          },
+        })),
+    }),
+    {
+      name: "my-budget-storage", // fica gravado no AsyncStorage
+    }
+  )
 );

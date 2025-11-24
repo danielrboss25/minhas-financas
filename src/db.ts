@@ -1,33 +1,34 @@
-// src/db.ts — implementação NATIVE (Expo Go / Android / iOS)
-// API moderna do expo-sqlite (SDK 51/52+), 100% assíncrona.
+// src/db.ts — implementação moderna com expo-sqlite (SDK 51/52+)
+// 100% assíncrona, compatível com Android, iOS e Expo Go.
 
 import { openDatabaseAsync, SQLiteDatabase } from "expo-sqlite";
 
 export type FinanceRecord = {
-  id: string;
-  date: string;
-  type: "expense" | "income";
-  category: string;
-  amount: number;
-  note?: string;
-  month_key: string;
-  created_at?: string;
+  id: string;                      // UUID manual
+  date: string;                    // YYYY-MM-DD
+  type: "expense" | "income";      // tipo de movimento
+  category: string;                // ex: "Supermercado"
+  amount: number;                  // valor
+  note?: string;                   // opcional
+  month_key: string;               // "YYYY-MM"
+  created_at?: string;             // ISO timestamp
 };
 
-// Singleton para abrir/initializar a BD uma única vez
+// Singleton para abrir a BD apenas 1 vez
 let dbPromise: Promise<SQLiteDatabase> | null = null;
 
 async function getDB(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = openDatabaseAsync("financas.db").then(async (db) => {
-      // Opcional, mas melhora concorrência
+      // Melhor concorrência e estabilidade
       await db.execAsync(`PRAGMA journal_mode = WAL;`);
 
+      // Cria tabela
       await db.execAsync(`
         CREATE TABLE IF NOT EXISTS finance_records (
           id TEXT PRIMARY KEY NOT NULL,
           date TEXT NOT NULL,
-          type TEXT NOT NULL CHECK (type IN ('expense','income')),
+          type TEXT NOT NULL CHECK (type IN ('expense', 'income')),
           category TEXT NOT NULL,
           amount REAL NOT NULL,
           note TEXT,
@@ -39,16 +40,17 @@ async function getDB(): Promise<SQLiteDatabase> {
       return db;
     });
   }
+
   return dbPromise;
 }
 
-/** Garante que a BD está criada (podes chamar no arranque da app). */
+/** Inicializa a BD (chamar no arranque da app). */
 export async function initDB(): Promise<void> {
   await getDB();
 }
 
 export const q = {
-  /** Lista todos os registos do mês (ordenados por data desc, depois created_at desc). */
+  /** Lista registos de UM mês (ordenados por data e criação). */
   async listMonth(monthKey: string): Promise<FinanceRecord[]> {
     const db = await getDB();
     const rows = await db.getAllAsync<FinanceRecord>(
@@ -60,7 +62,7 @@ export const q = {
     return rows ?? [];
   },
 
-  /** Soma das despesas do mês (0 se vazio). */
+  /** Soma total de despesas do mês (0 se não houver nada). */
   async sumOfMonth(monthKey: string): Promise<number> {
     const db = await getDB();
     const row = await db.getFirstAsync<{ total: number }>(
@@ -72,10 +74,10 @@ export const q = {
     return Number(row?.total ?? 0);
   },
 
-  /** Insere um registo (a created_at é preenchida aqui). */
+  /** Insere um registo. */
   async insert(rec: Omit<FinanceRecord, "created_at">): Promise<void> {
     const db = await getDB();
-    const created = new Date().toISOString();
+    const createdAt = new Date().toISOString();
 
     await db.runAsync(
       `INSERT INTO finance_records
@@ -89,16 +91,17 @@ export const q = {
         rec.amount,
         rec.note ?? null,
         rec.month_key,
-        created,
+        createdAt,
       ]
     );
   },
 
-  /** (Opcional) Apaga todos os registos de um mês — útil para testes. */
+  /** Apaga todos os registos de um mês (útil em testes). */
   async clearMonth(monthKey: string): Promise<void> {
     const db = await getDB();
-    await db.runAsync(`DELETE FROM finance_records WHERE month_key = ?`, [
-      monthKey,
-    ]);
+    await db.runAsync(
+      `DELETE FROM finance_records WHERE month_key = ?`,
+      [monthKey]
+    );
   },
 };
