@@ -8,10 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { LinearGradient } from "expo-linear-gradient";
 import { ArrowLeft } from "lucide-react-native";
+import { format } from "date-fns";
+import * as pt from "date-fns/locale/pt";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootTabParamList } from "../../App";  
+import type { RootTabParamList } from "../../App";
 
 type Props = NativeStackScreenProps<RootTabParamList, "NovaMovimentacao">;
 
@@ -19,7 +22,23 @@ export default function NovaMovimentacaoScreen({ navigation }: Props) {
   const [type, setType] = useState<"income" | "expense">("income");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [date, setDate] = useState("");
+
+  // Função que formata a data em "DD/MM/YYYY"
+  const formatDate = (d: Date): string => {
+    const dia = String(d.getDate()).padStart(2, "0");
+    const mes = String(d.getMonth() + 1).padStart(2, "0");
+    const ano = d.getFullYear();
+    return `${dia}/${mes}/${ano}`;
+  };
+
+  // Função que converte a string para Date
+  const parseDate = (s: string): Date => {
+    const [dia, mes, ano] = s.split("/").map(Number);
+    return new Date(ano, mes - 1, dia);
+  };
+
+  const [date, setDate] = useState<string>(() => formatDate(new Date()));
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [amount, setAmount] = useState("");
 
   function handleSave() {
@@ -31,6 +50,11 @@ export default function NovaMovimentacaoScreen({ navigation }: Props) {
       amount,
     });
     navigation.goBack();
+  }
+
+  function onChangeDate(_: any, selected?: Date) {
+    setShowDatePicker(Platform.OS === "ios");
+    if (selected) setDate(formatDate(selected));
   }
 
   return (
@@ -120,13 +144,21 @@ export default function NovaMovimentacaoScreen({ navigation }: Props) {
 
         <View style={styles.field}>
           <Text style={styles.label}>Data</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="2025-11-01"
-            placeholderTextColor="#6B7280"
-            value={date}
-            onChangeText={setDate}
-          />
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.dateBtn}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={styles.dateBtnText}>{date}</Text>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={new Date()}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "calendar"}
+              onChange={onChangeDate}
+            />
+          )}
         </View>
 
         <View style={styles.field}>
@@ -250,6 +282,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1F2937",
   },
+
+  dateBtn: {
+    backgroundColor: "#111827",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#1F2937",
+  },
+  dateBtnText: { color: "#fff", fontSize: 16 },
 
   saveButton: {
     marginTop: 10,

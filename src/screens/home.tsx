@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Importando useSafeAreaInsets
 import {
   Wallet,
   CheckSquare,
@@ -15,166 +16,180 @@ import {
   Lightbulb,
   ArrowRight,
 } from "lucide-react-native";
+import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context"; // Importando SafeAreaProvider e SafeAreaView
 
 type HomeScreenProps = {
   navigation: any;
 };
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
+  const insets = useSafeAreaInsets(); // Usando o SafeAreaInsets para definir o espaço correto
+
   return (
-    <View style={styles.root}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header com gradiente perigoso */}
-        <LinearGradient
-          colors={["#111827", "#1F2937", "#0F172A"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerCard}
+    <SafeAreaProvider>
+      <SafeAreaView style={[styles.root, { paddingTop: insets.top }]}>
+        {/* Agora a Safe Area é respeitada */}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.headerTitle}>Bem-vindo de volta</Text>
-          <Text style={styles.headerSubtitle}>
-            A tua central de comando para dinheiro, tarefas e ideias.
-          </Text>
+          {/* Header com gradiente perigoso */}
+          <LinearGradient
+            colors={["#111827", "#1F2937", "#0F172A"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.headerCard}
+          >
+            <Text style={styles.headerTitle}>Bem-vindo de volta</Text>
+            <Text style={styles.headerSubtitle}>
+              A tua central de comando para dinheiro, tarefas e ideias.
+            </Text>
 
-          <View style={styles.headerRow}>
-            <View style={styles.headerPill}>
-              <View style={styles.headerDot} />
-              <Text style={styles.headerPillText}>Modo perigoso ativo</Text>
+            <View style={styles.headerRow}>
+              <View style={styles.headerPill}>
+                <View style={styles.headerDot} />
+                <Text style={styles.headerPillText}>Modo perigoso ativo</Text>
+              </View>
+
+              <View style={styles.headerMiniStats}>
+                <View style={styles.headerMiniStat}>
+                  <Text style={styles.headerMiniLabel}>Este mês</Text>
+                  <Text style={styles.headerMiniValue}>1 000 €</Text>
+                </View>
+                <View style={styles.headerMiniStat}>
+                  <Text style={styles.headerMiniLabel}>Tarefas</Text>
+                  <Text style={styles.headerMiniValue}>3 hoje</Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {/* Secção de atalhos principais */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Atalhos rápidos</Text>
+              <Text style={styles.sectionSubtitle}>
+                Vai directo ao que interessa
+              </Text>
             </View>
 
-            <View style={styles.headerMiniStats}>
-              <View style={styles.headerMiniStat}>
-                <Text style={styles.headerMiniLabel}>Este mês</Text>
-                <Text style={styles.headerMiniValue}>1 000 €</Text>
+            <View style={styles.grid}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.gridItem}
+                onPress={() => navigation.navigate("Finanças")}
+              >
+                <View style={styles.gridIconWrapper}>
+                  <Wallet color="#22C55E" size={22} />
+                </View>
+                <Text style={styles.gridTitle}>Finanças</Text>
+                <Text style={styles.gridText} numberOfLines={2}>
+                  Vê o orçamento, movimentos e categorias.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.gridItem}
+                onPress={() => navigation.navigate("Tarefas")}
+              >
+                <View style={styles.gridIconWrapper}>
+                  <CheckSquare color="#38BDF8" size={22} />
+                </View>
+                <Text style={styles.gridTitle}>Tarefas</Text>
+                <Text style={styles.gridText} numberOfLines={2}>
+                  Lista limpa, cabeça limpa. Ou quase.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.gridItem}
+                onPress={() => navigation.navigate("Refeições")}
+              >
+                <View style={styles.gridIconWrapper}>
+                  <Utensils color="#F97316" size={22} />
+                </View>
+                <Text style={styles.gridTitle}>Refeições</Text>
+                <Text style={styles.gridText} numberOfLines={2}>
+                  Planeia o que comes sem passar fome nem a conta.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.gridItem}
+                onPress={() => navigation.navigate("Ideias")}
+              >
+                <View style={styles.gridIconWrapper}>
+                  <Lightbulb color="#FACC15" size={22} />
+                </View>
+                <Text style={styles.gridTitle}>Ideias</Text>
+                <Text style={styles.gridText} numberOfLines={2}>
+                  Guarda as ideias antes que o cérebro faça logout.
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Secção de resumo financeiro rápido */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Resumo rápido</Text>
+              <Text style={styles.sectionSubtitle}>
+                Só o essencial para hoje
+              </Text>
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.miniCard}>
+                <Text style={styles.miniLabel}>Saldo estimado</Text>
+                <Text style={[styles.miniValue, { color: "#22C55E" }]}>
+                  850,00 €
+                </Text>
+                <Text style={styles.miniHint}>
+                  Depois das despesas previstas
+                </Text>
               </View>
-              <View style={styles.headerMiniStat}>
-                <Text style={styles.headerMiniLabel}>Tarefas</Text>
-                <Text style={styles.headerMiniValue}>3 hoje</Text>
+
+              <View style={styles.miniCard}>
+                <Text style={styles.miniLabel}>Despesas previstas</Text>
+                <Text style={[styles.miniValue, { color: "#F97373" }]}>
+                  320,00 €
+                </Text>
+                <Text style={styles.miniHint}>
+                  Supermercado, contas e afins
+                </Text>
               </View>
             </View>
           </View>
-        </LinearGradient>
 
-        {/* Secção de atalhos principais */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Atalhos rápidos</Text>
-            <Text style={styles.sectionSubtitle}>Vai directo ao que interessa</Text>
-          </View>
+          {/* “Continuar de onde ficaste” */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Continuar</Text>
+              <Text style={styles.sectionSubtitle}>O que andavas a mexer</Text>
+            </View>
 
-          <View style={styles.grid}>
             <TouchableOpacity
               activeOpacity={0.9}
-              style={styles.gridItem}
+              style={styles.continueCard}
               onPress={() => navigation.navigate("Finanças")}
             >
-              <View style={styles.gridIconWrapper}>
-                <Wallet color="#22C55E" size={22} />
+              <View>
+                <Text style={styles.continueLabel}>Finanças</Text>
+                <Text style={styles.continueTitle}>
+                  Rever movimentos e orçamento deste mês
+                </Text>
+                <Text style={styles.continueHint}>Último acesso há pouco</Text>
               </View>
-              <Text style={styles.gridTitle}>Finanças</Text>
-              <Text style={styles.gridText} numberOfLines={2}>
-                Vê o orçamento, movimentos e categorias.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={styles.gridItem}
-              onPress={() => navigation.navigate("Tarefas")}
-            >
-              <View style={styles.gridIconWrapper}>
-                <CheckSquare color="#38BDF8" size={22} />
-              </View>
-              <Text style={styles.gridTitle}>Tarefas</Text>
-              <Text style={styles.gridText} numberOfLines={2}>
-                Lista limpa, cabeça limpa. Ou quase.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={styles.gridItem}
-              onPress={() => navigation.navigate("Refeições")}
-            >
-              <View style={styles.gridIconWrapper}>
-                <Utensils color="#F97316" size={22} />
-              </View>
-              <Text style={styles.gridTitle}>Refeições</Text>
-              <Text style={styles.gridText} numberOfLines={2}>
-                Planeia o que comes sem passar fome nem a conta.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={styles.gridItem}
-              onPress={() => navigation.navigate("Ideias")}
-            >
-              <View style={styles.gridIconWrapper}>
-                <Lightbulb color="#FACC15" size={22} />
-              </View>
-              <Text style={styles.gridTitle}>Ideias</Text>
-              <Text style={styles.gridText} numberOfLines={2}>
-                Guarda as ideias antes que o cérebro faça logout.
-              </Text>
+              <ArrowRight color="#9CA3AF" size={20} />
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* Secção de resumo financeiro rápido */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Resumo rápido</Text>
-            <Text style={styles.sectionSubtitle}>Só o essencial para hoje</Text>
-          </View>
-
-          <View style={styles.row}>
-            <View style={styles.miniCard}>
-              <Text style={styles.miniLabel}>Saldo estimado</Text>
-              <Text style={[styles.miniValue, { color: "#22C55E" }]}>
-                850,00 €
-              </Text>
-              <Text style={styles.miniHint}>Depois das despesas previstas</Text>
-            </View>
-
-            <View style={styles.miniCard}>
-              <Text style={styles.miniLabel}>Despesas previstas</Text>
-              <Text style={[styles.miniValue, { color: "#F97373" }]}>
-                320,00 €
-              </Text>
-              <Text style={styles.miniHint}>Supermercado, contas e afins</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* “Continuar de onde ficaste” */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Continuar</Text>
-            <Text style={styles.sectionSubtitle}>O que andavas a mexer</Text>
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.continueCard}
-            onPress={() => navigation.navigate("Finanças")}
-          >
-            <View>
-              <Text style={styles.continueLabel}>Finanças</Text>
-              <Text style={styles.continueTitle}>
-                Rever movimentos e orçamento deste mês
-              </Text>
-              <Text style={styles.continueHint}>Último acesso há pouco</Text>
-            </View>
-            <ArrowRight color="#9CA3AF" size={20} />
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -189,7 +204,6 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
   },
 
-  // HEADER
   headerCard: {
     borderRadius: 22,
     padding: 18,
@@ -252,7 +266,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // SECTIONS
   section: {
     marginBottom: 22,
   },
@@ -270,7 +283,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // GRID DE ATALHOS
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -304,11 +316,13 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
   },
 
-  // MINI CARDS RESUMO
   row: {
-    flexDirection: "row",
-    gap: 12,
+    flexDirection: "row", // Define a direção dos itens como linha (horizontal)
+    justifyContent: "space-between", // Espaça igualmente os itens
+    alignItems: "center", // Alinha os itens verticalmente ao centro
+    marginBottom: 22, // Espaço inferior
   },
+
   miniCard: {
     flex: 1,
     backgroundColor: "#020617",
@@ -333,7 +347,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // CONTINUAR
   continueCard: {
     backgroundColor: "#020617",
     borderRadius: 18,

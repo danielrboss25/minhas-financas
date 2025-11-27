@@ -6,7 +6,8 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider } from "react-native-safe-area-context"; // Garantir que SafeArea seja usado corretamente
+
 import {
   Wallet,
   CheckSquare,
@@ -31,7 +32,6 @@ export type FinancasStackParamList = {
   MovimentoDetalhe: { id: string };
 };
 
-
 export type RootTabParamList = {
   Home: undefined;
   FinancasStack: undefined;
@@ -54,10 +54,7 @@ function FinancasStackNavigator() {
         headerShown: false,
       }}
     >
-      <FinancasStack.Screen
-        name="FinancasMain"
-        component={FinanceScreen}
-      />
+      <FinancasStack.Screen name="FinancasMain" component={FinanceScreen} />
       <FinancasStack.Screen
         name="NovaMovimentacao"
         component={NovaMovimentacaoScreen}
@@ -105,18 +102,14 @@ export default function App() {
                   ),
                 }}
               />
-
               <Tab.Screen
                 name="FinancasStack"
                 component={FinancasStackNavigator}
                 options={{
                   title: "Finanças",
-                  tabBarIcon: ({ color }) => (
-                    <Wallet color={color} size={20} />
-                  ),
+                  tabBarIcon: ({ color }) => <Wallet color={color} size={20} />,
                 }}
               />
-
               <Tab.Screen
                 name="Tarefas"
                 component={TasksScreen}
@@ -126,7 +119,6 @@ export default function App() {
                   ),
                 }}
               />
-
               <Tab.Screen
                 name="Refeicoes"
                 component={MealsScreen}
@@ -137,7 +129,6 @@ export default function App() {
                   ),
                 }}
               />
-
               <Tab.Screen
                 name="Ideias"
                 component={IdeasScreen}
