@@ -13,17 +13,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ArrowLeft } from "lucide-react-native";
 import { format } from "date-fns";
 import * as pt from "date-fns/locale/pt";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootTabParamList } from "../../App";
+import { useMovimentos } from "../context/MovimentosContext"; // Importando o contexto
 
-type Props = NativeStackScreenProps<RootTabParamList, "NovaMovimentacao">;
-
-export default function NovaMovimentacaoScreen({ navigation }: Props) {
+export default function NovaMovimentacaoScreen({ navigation }: any) {
+  const { addMovimento } = useMovimentos(); // Usando a função para adicionar movimentos
   const [type, setType] = useState<"income" | "expense">("income");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [date, setDate] = useState<string>(format(new Date(), "dd/MM/yyyy"));
+  const [amount, setAmount] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Função que formata a data em "DD/MM/YYYY"
+  // Formatar data para "dd/MM/yyyy"
   const formatDate = (d: Date): string => {
     const dia = String(d.getDate()).padStart(2, "0");
     const mes = String(d.getMonth() + 1).padStart(2, "0");
@@ -31,31 +32,38 @@ export default function NovaMovimentacaoScreen({ navigation }: Props) {
     return `${dia}/${mes}/${ano}`;
   };
 
-  // Função que converte a string para Date
-  const parseDate = (s: string): Date => {
-    const [dia, mes, ano] = s.split("/").map(Number);
-    return new Date(ano, mes - 1, dia);
+  // Atualizar a data
+  const onChangeDate = (event: any, selectedDate?: Date) => {
+    const currentDate = selectedDate || new Date();
+    setDate(formatDate(currentDate));
+    setShowDatePicker(Platform.OS === "ios");
   };
 
-  const [date, setDate] = useState<string>(() => formatDate(new Date()));
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [amount, setAmount] = useState("");
+  // Função para salvar a movimentação
+  const handleSave = async () => {
+    if (!description || !amount || !category) {
+      alert("Preencha todos os campos");
+      return;
+    }
 
-  function handleSave() {
-    console.log("Movimentação guardada:", {
+    // aceita vírgula como separador decimal
+    const parsedAmount = Number(String(amount).replace(",", "."));
+    if (Number.isNaN(parsedAmount)) {
+      alert("Montante inválido");
+      return;
+    }
+
+    const movimento = {
       type,
-      description,
-      category,
+      description: description.trim(),
+      category: category.trim() || "Sem categoria",
       date,
-      amount,
-    });
-    navigation.goBack();
-  }
+      amount: parsedAmount,
+    };
 
-  function onChangeDate(_: any, selected?: Date) {
-    setShowDatePicker(Platform.OS === "ios");
-    if (selected) setDate(formatDate(selected));
-  }
+    await addMovimento(movimento); // Adicionando o movimento ao contexto/BD
+    navigation.goBack(); // Navegar de volta após salvar
+  };
 
   return (
     <KeyboardAvoidingView

@@ -21,6 +21,7 @@ import {
   ChevronRight,
 } from "lucide-react-native";
 import { Swipeable } from "react-native-gesture-handler";
+import { useMovimentos } from "../context/MovimentosContext";
 
 const MONTHS = [
   "janeiro",
@@ -97,7 +98,17 @@ const initialMovements: Movement[] = [
 
 export default function FinanceScreen({ navigation }: FinanceScreenProps) {
   const [budget] = useState(1000);
-  const [movements, setMovements] = useState<Movement[]>(initialMovements);
+  const { movimentos, deleteMovimento } = useMovimentos();
+
+  // substitui estado local por movimentos do contexto
+  const movements = movimentos.map((m) => ({
+    id: m.id,
+    type: m.type,
+    description: m.description,
+    category: m.category,
+    date: m.date, // já em "DD/MM[/YYYY]"
+    amount: m.amount,
+  }));
 
   // mês/ano visível
   const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
@@ -152,7 +163,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
   }, [filteredMovements, budget]);
 
   function handleDelete(id: string) {
-    setMovements((prev) => prev.filter((m) => m.id !== id));
+    deleteMovimento(id);
   }
 
   function renderRightActions(id: string) {

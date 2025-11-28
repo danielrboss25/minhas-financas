@@ -77,12 +77,15 @@ function DetalhesMovimentoScreen({
 
   function handleSave() {
     if (!movimento) return;
+    const parsedAmount = Number(String(amount).replace(",", "."));
+    const finalAmount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
+
     updateMovimento(movimento.id, {
-      title: title.trim(),
-      description: title.trim(),
+      title: title.trim() || "Sem descrição",
+      description: title.trim() || "",
       category: category.trim() || "Sem categoria",
-      date,
-      amount: String(amount).trim(),
+      date: date || formatDate(new Date()),
+      amount: finalAmount,
     });
     navigation.goBack();
   }

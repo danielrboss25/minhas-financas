@@ -4,5 +4,5 @@ export type RootTabParamList = {
   Tarefas: undefined;
   Refeicoes: undefined;
   Ideias: undefined;
-   MovimentoDetalhe: { id: string };
+  MovimentoDetalhe: { id: string };
 };
