@@ -1,8 +1,10 @@
 export type RootTabParamList = {
-  Inicio: undefined;
-  Financas: undefined;
+  Home: undefined;
+  FinancasStack: undefined;
   Tarefas: undefined;
   Refeicoes: undefined;
   Ideias: undefined;
-  MovimentoDetalhe: { id: string };
+  Tabs: undefined;
+  NovaMovimentacao: undefined;
+  MovimentoDetalhe: { id: string };  // Corrigido para que seja mais claro no tipo
 };

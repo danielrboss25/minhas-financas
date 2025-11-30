@@ -1,25 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { openDatabase } from "expo-sqlite";
-const db = openDatabase("financas.db");
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { Platform } from "react-native";
 
-function execSql<T = any>(sql: string, params: any[] = []): Promise<T> {
-  return new Promise((resolve, reject) => {
-    db.transaction(
-      (tx: any) => {
-        tx.executeSql(
-          sql,
-          params,
-          (_tx: any, result: any) => resolve(result as unknown as T),
-          (_tx: any, err: any) => {
-            reject(err);
-            return false;
-          }
-        );
-      },
-      (txErr: any) => reject(txErr)
-    );
-  });
-}
+import { execSql as execSqlNative } from "../db";
+import { execSql as execSqlWeb } from "../db.web";
+
+const execSql = Platform.OS === "web" ? execSqlWeb : execSqlNative;
 
 export type Movimento = {
   id: string;
@@ -37,7 +22,7 @@ export type NewMovimento = {
   description: string;
   title?: string;
   category?: string;
-  date: string; // dd/MM/yyyy
+  date: string;
   amount: number | string;
 };
 
@@ -59,29 +44,19 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
 
   useEffect(() => {
-    execSql(
-      `CREATE TABLE IF NOT EXISTS movimentos (
-        id TEXT PRIMARY KEY NOT NULL,
-        type TEXT NOT NULL,
-        description TEXT,
-        title TEXT,
-        category TEXT,
-        date TEXT,
-        amount REAL,
-        created_at TEXT
-      );`
-    ).catch((e) => console.warn("create table err", e));
+    // A criação da tabela passa a ser responsabilidade de db.ts / db.web.ts
+    // Aqui apenas carregamos os dados.
     loadMovimentos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadMovimentos() {
     try {
-      const res: any = await execSql(
+      // IMPORTANTE: execSql deve devolver um array de linhas para SELECT
+      const rows: any[] = await execSql(
         "SELECT * FROM movimentos ORDER BY date DESC, created_at DESC",
         []
       );
-      const rows = res?.rows?._array ?? [];
+
       const mapped: Movimento[] = rows.map((r: any) => ({
         id: String(r.id),
         type: r.type === "income" ? "income" : "expense",
@@ -89,9 +64,11 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
         title: r.title ?? r.description ?? "",
         category: r.category ?? "Sem categoria",
         date: r.date ?? "",
-        amount: typeof r.amount === "number" ? r.amount : Number(r.amount) || 0,
+        amount:
+          typeof r.amount === "number" ? r.amount : Number(r.amount) || 0,
         created_at: r.created_at ?? undefined,
       }));
+
       setMovimentos(mapped);
     } catch (err) {
       console.error("Erro ao carregar movimentos", err);
@@ -101,10 +78,12 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
   async function addMovimento(m: NewMovimento) {
     const id = Date.now().toString();
     const created_at = new Date().toISOString();
+
     const amountNum =
       typeof m.amount === "number"
         ? m.amount
         : Number(String(m.amount).replace(",", "."));
+
     const novo: Movimento = {
       id,
       created_at,
@@ -131,6 +110,7 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
           novo.created_at,
         ]
       );
+
       setMovimentos((prev) => [novo, ...prev]);
     } catch (err) {
       console.error("Erro ao adicionar movimento", err);
@@ -142,11 +122,14 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
       (k) => k !== "id" && k !== "created_at"
     );
     if (keys.length === 0) return;
+
     const setSql = keys.map((k) => `${k} = ?`).join(", ");
     const params = keys.map((k) => (fields as any)[k]);
     params.push(id);
+
     try {
       await execSql(`UPDATE movimentos SET ${setSql} WHERE id = ?`, params);
+
       setMovimentos((prev) =>
         prev.map((mv) =>
           mv.id === id
@@ -189,7 +172,10 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
 
 export function useMovimentos() {
   const ctx = useContext(MovimentosContext);
-  if (!ctx)
+  if (!ctx) {
     throw new Error("useMovimentos must be used within MovimentosProvider");
+  }
   return ctx;
 }
+
+export { MovimentosContext };

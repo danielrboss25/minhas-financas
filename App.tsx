@@ -1,4 +1,3 @@
-// App.tsx
 import "react-native-gesture-handler";
 import React from "react";
 import { StatusBar } from "expo-status-bar";
@@ -29,7 +28,7 @@ import { MovimentosProvider } from "./src/context/MovimentosContext";
 export type FinancasStackParamList = {
   FinancasMain: undefined;
   NovaMovimentacao: undefined;
-  MovimentoDetalhe: { id: string };
+  MovimentoDetalhe: { id: string }; // Ajuste no tipo para detalhar o ID
 };
 
 export type RootTabParamList = {
@@ -40,8 +39,9 @@ export type RootTabParamList = {
   Ideias: undefined;
   Tabs: undefined;
   NovaMovimentacao: undefined;
-  MovimentoDetalhe: { id: string };
+  MovimentoDetalhe: { id: string }; // Aqui, garantindo que a propriedade `id` seja do tipo string
 };
+
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const FinancasStack = createNativeStackNavigator<FinancasStackParamList>();
@@ -51,10 +51,15 @@ function FinancasStackNavigator() {
   return (
     <FinancasStack.Navigator
       screenOptions={{
-        headerShown: false,
+        headerShown: false, // Desabilita o header para todas as telas do Stack
       }}
+      // Adicionando id (se necessário) ou passando undefined, conforme o tipo esperado
+      id={undefined}  // Adicionar esta linha pode resolver o erro
     >
-      <FinancasStack.Screen name="FinancasMain" component={FinanceScreen} />
+      <FinancasStack.Screen 
+        name="FinancasMain" 
+        component={FinanceScreen} 
+      />
       <FinancasStack.Screen
         name="NovaMovimentacao"
         component={NovaMovimentacaoScreen}
@@ -62,6 +67,7 @@ function FinancasStackNavigator() {
       <FinancasStack.Screen
         name="MovimentoDetalhe"
         component={DetalhesMovimentoScreen}
+         initialParams={{ id: "someId" }}
       />
     </FinancasStack.Navigator>
   );
@@ -91,6 +97,7 @@ export default function App() {
                   fontWeight: "600",
                 },
               }}
+               id={undefined}
             >
               <Tab.Screen
                 name="Home"

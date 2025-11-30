@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,44 +12,52 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { LinearGradient } from "expo-linear-gradient";
 import { ArrowLeft } from "lucide-react-native";
 import { format } from "date-fns";
-import * as pt from "date-fns/locale/pt";
-import { useMovimentos } from "../context/MovimentosContext"; // Importando o contexto
+import { pt } from "date-fns/locale";
+import { useMovimentos } from "../context/MovimentosContext";
 
 export default function NovaMovimentacaoScreen({ navigation }: any) {
-  const { addMovimento } = useMovimentos(); // Usando a função para adicionar movimentos
+  const { addMovimento } = useMovimentos();
+
   const [type, setType] = useState<"income" | "expense">("income");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [date, setDate] = useState<string>(format(new Date(), "dd/MM/yyyy"));
+  const [date, setDate] = useState<string>(
+    format(new Date(), "dd/MM/yyyy", { locale: pt })
+  );
   const [amount, setAmount] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Formatar data para "dd/MM/yyyy"
-  const formatDate = (d: Date): string => {
-    const dia = String(d.getDate()).padStart(2, "0");
-    const mes = String(d.getMonth() + 1).padStart(2, "0");
-    const ano = d.getFullYear();
-    return `${dia}/${mes}/${ano}`;
+  const parseDate = (s: string) => {
+    const [day = "01", month = "01", year = String(new Date().getFullYear())] =
+      s.split("/");
+    return new Date(Number(year), Number(month) - 1, Number(day));
   };
 
-  // Atualizar a data
-  const onChangeDate = (event: any, selectedDate?: Date) => {
+  const dateValue = useMemo(() => {
+    if (!date) return new Date();
+    return parseDate(date);
+  }, [date]);
+
+  const formatDate = (d: Date): string =>
+    format(d, "dd/MM/yyyy", { locale: pt });
+
+  const onChangeDate = (_: any, selectedDate?: Date) => {
+    if (Platform.OS !== "ios") {
+      setShowDatePicker(false);
+    }
     const currentDate = selectedDate || new Date();
     setDate(formatDate(currentDate));
-    setShowDatePicker(Platform.OS === "ios");
   };
 
-  // Função para salvar a movimentação
   const handleSave = async () => {
     if (!description || !amount || !category) {
-      alert("Preencha todos os campos");
+      alert("Preencha todos os campos.");
       return;
     }
 
-    // aceita vírgula como separador decimal
     const parsedAmount = Number(String(amount).replace(",", "."));
     if (Number.isNaN(parsedAmount)) {
-      alert("Montante inválido");
+      alert("Montante inválido.");
       return;
     }
 
@@ -61,8 +69,12 @@ export default function NovaMovimentacaoScreen({ navigation }: any) {
       amount: parsedAmount,
     };
 
-    await addMovimento(movimento); // Adicionando o movimento ao contexto/BD
-    navigation.goBack(); // Navegar de volta após salvar
+    try {
+      await addMovimento(movimento);
+      navigation.goBack();
+    } catch (err) {
+      console.error("Erro ao guardar movimentação", err);
+    }
   };
 
   return (
@@ -161,7 +173,7 @@ export default function NovaMovimentacaoScreen({ navigation }: any) {
           </TouchableOpacity>
           {showDatePicker && (
             <DateTimePicker
-              value={new Date()}
+              value={dateValue}
               mode="date"
               display={Platform.OS === "ios" ? "spinner" : "calendar"}
               onChange={onChangeDate}
@@ -201,7 +213,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0B0F14",
   },
-
   header: {
     paddingTop: 60,
     paddingBottom: 30,
@@ -209,32 +220,27 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 22,
     borderBottomRightRadius: 22,
   },
-
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-
   headerTitle: {
     fontSize: 24,
     fontWeight: "700",
     color: "#fff",
   },
-
   headerSubtitle: {
     marginTop: 12,
     fontSize: 15,
     color: "#CBD5E1",
     lineHeight: 22,
   },
-
   typeSwitch: {
     flexDirection: "row",
     gap: 12,
     marginTop: 25,
   },
-
   typeChip: {
     flex: 1,
     paddingVertical: 12,
@@ -245,42 +251,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "transparent",
   },
-
   typeChipActiveIncome: {
     backgroundColor: "rgba(16,185,129,0.20)",
     borderColor: "#10B981",
   },
-
   typeChipActiveExpense: {
     backgroundColor: "rgba(239,68,68,0.20)",
     borderColor: "#EF4444",
   },
-
   typeChipText: {
     color: "#94A3B8",
     fontSize: 16,
     fontWeight: "600",
   },
-
   typeChipTextActive: {
     color: "#fff",
   },
-
   form: {
     padding: 22,
     gap: 22,
   },
-
   field: {
     gap: 6,
   },
-
   label: {
     fontSize: 14,
     color: "#CBD5E1",
     fontWeight: "600",
   },
-
   input: {
     backgroundColor: "#111827",
     borderRadius: 14,
@@ -290,7 +288,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1F2937",
   },
-
   dateBtn: {
     backgroundColor: "#111827",
     borderRadius: 14,
@@ -300,14 +297,12 @@ const styles = StyleSheet.create({
     borderColor: "#1F2937",
   },
   dateBtnText: { color: "#fff", fontSize: 16 },
-
   saveButton: {
     marginTop: 10,
     paddingVertical: 16,
     borderRadius: 16,
     alignItems: "center",
   },
-
   saveButtonText: {
     fontSize: 16,
     fontWeight: "700",

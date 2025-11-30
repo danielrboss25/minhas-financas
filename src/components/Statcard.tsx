@@ -1,25 +1,28 @@
-import React from 'react';
-import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { MotiView } from 'moti';
-import { colors, radius, space } from '../theme/theme';
+// src/components/StatCard.tsx
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { BlurView } from "expo-blur";
+import { MotiView } from "moti";
+import { COLORS } from "../theme/theme";
+
+type StatCardProps = {
+  title: string;
+  value: string;
+  right?: React.ReactNode;
+  color?: string;
+};
 
 export default function StatCard({
   title,
   value,
   right,
-  color = colors.primary,
-}: {
-  title: string;
-  value: string;
-  right?: React.ReactNode;
-  color?: string;
-}) {
+  color = COLORS.income, // cor default se não passares nada
+}: StatCardProps) {
   return (
     <MotiView
       from={{ opacity: 0, translateY: 10 }}
       animate={{ opacity: 1, translateY: 0 }}
-      transition={{ type: 'timing', duration: 400 }}
+      transition={{ type: "timing", duration: 400 }}
       style={{ flex: 1 }}
     >
       <BlurView intensity={30} tint="dark" style={styles.card}>
@@ -36,20 +39,29 @@ export default function StatCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    padding: space.md,
+    borderRadius: 16,
+    overflow: "hidden",
+    padding: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-  } as ViewStyle,
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   dot: {
-    width: 10, height: 10, borderRadius: 10,
+    width: 10,
+    height: 10,
+    borderRadius: 10,
     marginTop: 2,
-  } as ViewStyle,
-  title: { color: colors.sub, fontSize: 12 } as TextStyle,
-  value: { color: colors.text, fontSize: 20, fontWeight: '700' } as TextStyle,
+  },
+  title: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+  },
+  value: {
+    color: COLORS.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
+  },
 });

@@ -38,75 +38,22 @@ const MONTHS = [
   "dezembro",
 ];
 
-type MovementType = "income" | "expense";
-
-type Movement = {
-  id: string;
-  type: MovementType;
-  description: string;
-  category: string;
-  date: string; // formato "DD/MM"
-  amount: number;
-};
-
 type FinanceScreenProps = {
   navigation: any;
 };
 
-const initialMovements: Movement[] = [
-  {
-    id: "1",
-    type: "income",
-    description: "Salário",
-    category: "Rendimento",
-    date: "01/11",
-    amount: 1200,
-  },
-  {
-    id: "2",
-    type: "expense",
-    description: "Supermercado",
-    category: "Supermercado",
-    date: "03/11",
-    amount: 120,
-  },
-  {
-    id: "3",
-    type: "expense",
-    description: "Transportes",
-    category: "Transportes",
-    date: "04/11",
-    amount: 45,
-  },
-  {
-    id: "4",
-    type: "expense",
-    description: "Restaurantes",
-    category: "Restaurantes",
-    date: "05/11",
-    amount: 80,
-  },
-  {
-    id: "5",
-    type: "income",
-    description: "Freelance",
-    category: "Trabalho extra",
-    date: "10/11",
-    amount: 150,
-  },
-];
-
 export default function FinanceScreen({ navigation }: FinanceScreenProps) {
+  // por enquanto orçamento fixo; depois se quiseres ligas isto à BD / settings
   const [budget] = useState(1000);
   const { movimentos, deleteMovimento } = useMovimentos();
 
-  // substitui estado local por movimentos do contexto
+  // adaptação dos movimentos do contexto para o formato usado neste ecrã
   const movements = movimentos.map((m) => ({
     id: m.id,
     type: m.type,
     description: m.description,
     category: m.category,
-    date: m.date, // já em "DD/MM[/YYYY]"
+    date: m.date, // "dd/MM" ou "dd/MM/yyyy"
     amount: m.amount,
   }));
 
@@ -121,6 +68,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
   function prevMonth() {
     setCurrentMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
   }
+
   function nextMonth() {
     setCurrentMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
   }
@@ -130,22 +78,27 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
     setTempYear(currentMonth.getFullYear());
     setPickerVisible(true);
   }
+
   function confirmPicker() {
     setCurrentMonth(new Date(tempYear, tempMonthIndex, 1));
     setPickerVisible(false);
   }
+
   function cancelPicker() {
     setPickerVisible(false);
   }
 
-  // filtrar por mês/ano (lê "DD/MM" ou "DD/MM/YYYY")
+  // filtrar por mês/ano (aceita "dd/MM" ou "dd/MM/yyyy")
   const filteredMovements = useMemo(() => {
     const month = currentMonth.getMonth() + 1; // 1-12
     const year = currentMonth.getFullYear();
+
     return movements.filter((m) => {
+      if (!m.date) return false;
       const parts = m.date.split("/").map((p) => p.trim());
       const mMonth = parts.length >= 2 ? parseInt(parts[1], 10) : NaN;
       const mYear = parts.length >= 3 ? parseInt(parts[2], 10) : year; // se não houver ano, assume o ano selecionado
+      if (!Number.isFinite(mMonth) || !Number.isFinite(mYear)) return false;
       return mMonth === month && mYear === year;
     });
   }, [movements, currentMonth]);
@@ -154,11 +107,14 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
     const income = filteredMovements
       .filter((m) => m.type === "income")
       .reduce((s, m) => s + m.amount, 0);
+
     const expenses = filteredMovements
       .filter((m) => m.type === "expense")
       .reduce((s, m) => s + m.amount, 0);
+
     const balance = income - expenses;
     const usedPct = budget > 0 ? Math.min(expenses / budget, 1) : 0;
+
     return { income, expenses, balance, usedPct };
   }, [filteredMovements, budget]);
 
@@ -187,7 +143,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header com título (restaurado) */}
+        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>Finanças</Text>
@@ -269,7 +225,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
           </View>
         </LinearGradient>
 
-        {/* filtro mês/ano — colocado abaixo do card "Orçamento deste mês" */}
+        {/* filtro mês/ano */}
         <View style={styles.monthFilterContainer}>
           <TouchableOpacity style={styles.monthNavButton} onPress={prevMonth}>
             <ChevronLeft color="#CBD5E1" size={18} />
@@ -369,7 +325,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
           </View>
         </View>
 
-        {/* Por categoria (exemplo estático) */}
+        {/* Por categoria – ainda estático, podes ligar isto à BD mais tarde */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Por categoria</Text>
@@ -377,7 +333,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
           </View>
 
           <View style={styles.card}>
-            <View style={styles.categoryRow}>
+            <View  style={styles.categoryRow}>
               <Text style={styles.categoryLabel}>Supermercado</Text>
               <Text style={styles.categoryAmount}>120,00 €</Text>
             </View>
@@ -385,7 +341,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
               <View style={[styles.categoryBarFill, { width: "80%" }]} />
             </View>
 
-            <View style={styles.categoryRow}>
+            <View  style={styles.categoryRow}>
               <Text style={styles.categoryLabel}>Restaurantes</Text>
               <Text style={styles.categoryAmount}>80,00 €</Text>
             </View>
@@ -393,7 +349,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
               <View style={[styles.categoryBarFill, { width: "55%" }]} />
             </View>
 
-            <View style={styles.categoryRow}>
+            <View  style={styles.categoryRow}>
               <Text style={styles.categoryLabel}>Transportes</Text>
               <Text style={styles.categoryAmount}>45,00 €</Text>
             </View>
@@ -404,7 +360,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
         </View>
       </ScrollView>
 
-      {/* FAB flutuante no canto (restaurado) */}
+      {/* FAB flutuante */}
       <View style={styles.fabWrapper}>
         <TouchableOpacity
           activeOpacity={0.9}
@@ -421,7 +377,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
         </TouchableOpacity>
       </View>
 
-      {/* Modal simples para escolher mês/ano (mobile-friendly) */}
+      {/* Modal para escolher mês/ano */}
       <Modal visible={pickerVisible} animationType="slide" transparent>
         <RNSafeAreaView style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -494,6 +450,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+
+  title: { fontSize: 26, fontWeight: "800", color: "#F9FAFB" },
+  subtitle: { fontSize: 14, color: "#9CA3AF", marginTop: 2 },
+
   monthFilterContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -501,12 +461,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
-
-  title: { fontSize: 26, fontWeight: "800", color: "#F9FAFB" },
-  subtitle: { fontSize: 14, color: "#9CA3AF", marginTop: 2 },
-
-  monthPickerRow: { flexDirection: "row", alignItems: "center", gap: 8 }, // mantido como compatibilidade
-  monthPickerCenterRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   monthNavButton: { padding: 6, borderRadius: 8 },
   monthPill: {
     paddingHorizontal: 12,
@@ -632,7 +586,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
 
-  /* FAB flutuante (restaurado) */
   fabWrapper: { position: "absolute", right: 20, bottom: 20, zIndex: 40 },
   fab: {
     elevation: 10,
@@ -649,7 +602,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.06)",
   },
 
-  /* Modal styles */
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
@@ -729,7 +681,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
   tagPill: {
     paddingHorizontal: 8,
     paddingVertical: 4,

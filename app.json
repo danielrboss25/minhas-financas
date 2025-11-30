@@ -34,6 +34,11 @@
       "expo-sqlite",
       "expo-font"
     ],
+    
+    "updates": {
+    "enabled": false
+    },
+
     "extra": {
       "eas": {
         "projectId": "8a61bad0-f70c-4fb0-a3ba-3b10d3a8d74c"

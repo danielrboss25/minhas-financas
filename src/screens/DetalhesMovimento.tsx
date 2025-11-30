@@ -16,35 +16,27 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { pt } from "date-fns/locale";
 
-type Movimento = {
-  id: string;
-  title?: string;
-  description?: string;
-  category?: string;
-  date?: string;
-  amount: number | string;
-  type: "income" | "expense";
+// O tipo Movimento vem implicitamente da estrutura do contexto,
+// por isso não é estritamente necessário redefinir aqui.
+// Se quiseres mesmo o tipo, importa-o do contexto em vez de duplicar.
+
+type DetalhesMovimentoScreenProps = {
+  route: { params: { id: string } };
+  navigation: any;
 };
 
-function DetalhesMovimentoScreen({
-  route,
-  navigation,
-}: {
-  route: any;
-  navigation: any;
-}) {
+function DetalhesMovimentoScreen({ route, navigation }: DetalhesMovimentoScreenProps) {
   const { id } = route.params;
   const { movimentos, updateMovimento } = useMovimentos();
 
-  const movimento = movimentos.find((m) => m.id === id) as
-    | Movimento
-    | undefined;
+  const movimento = movimentos.find((m) => m.id === id);
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [date, setDate] = useState("");
   const [amount, setAmount] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
+
   const formatDate = (d: Date) => format(d, "dd/MM/yyyy", { locale: pt });
 
   const parseDate = (s: string) => {
@@ -53,9 +45,12 @@ function DetalhesMovimentoScreen({
     return new Date(Number(year), Number(month) - 1, Number(day));
   };
 
-  const dateValue = useMemo(() => parseDate(date), [date]);
+  const dateValue = useMemo(() => {
+    if (!date) return new Date();
+    return parseDate(date);
+  }, [date]);
 
-  // lista de categorias únicas derivada dos movimentos
+  // categorias únicas derivadas dos movimentos
   const categories = useMemo(() => {
     const setCat = new Set<string>();
     movimentos.forEach((m) => m.category && setCat.add(m.category));
@@ -69,25 +64,36 @@ function DetalhesMovimentoScreen({
     if (movimento) {
       setTitle(movimento.title ?? "");
       setCategory(movimento.category ?? "");
-      // se movimento não tiver data, usa hoje; normaliza para dd/MM/yyyy
-      setDate(movimento.date ? movimento.date : formatDate(new Date()));
+      // se não tiver data, usa hoje; normaliza para dd/MM/yyyy
+      if (movimento.date) {
+        // assumindo que já guardas dd/MM/yyyy
+        setDate(movimento.date);
+      } else {
+        setDate(formatDate(new Date()));
+      }
       setAmount(String(movimento.amount));
     }
   }, [movimento]);
 
-  function handleSave() {
+  async function handleSave() {
     if (!movimento) return;
+
     const parsedAmount = Number(String(amount).replace(",", "."));
     const finalAmount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
 
-    updateMovimento(movimento.id, {
-      title: title.trim() || "Sem descrição",
-      description: title.trim() || "",
-      category: category.trim() || "Sem categoria",
-      date: date || formatDate(new Date()),
-      amount: finalAmount,
-    });
-    navigation.goBack();
+    try {
+      await updateMovimento(movimento.id, {
+        title: title.trim() || "Sem descrição",
+        description: title.trim() || "",
+        category: category.trim() || "Sem categoria",
+        date: date || formatDate(new Date()),
+        amount: finalAmount,
+      });
+
+      navigation.goBack();
+    } catch (err) {
+      console.error("Erro ao guardar movimento", err);
+    }
   }
 
   function handleSelectCategory(cat: string) {
@@ -102,8 +108,12 @@ function DetalhesMovimentoScreen({
   }
 
   function onChangeDate(_: any, selected?: Date) {
-    setShowDatePicker(Platform.OS === "ios");
-    if (selected) setDate(formatDate(selected));
+    if (Platform.OS !== "ios") {
+      setShowDatePicker(false);
+    }
+    if (selected) {
+      setDate(formatDate(selected));
+    }
   }
 
   if (!movimento) {
@@ -225,9 +235,10 @@ function DetalhesMovimentoScreen({
             >
               <Text style={styles.dateTagText}>{date}</Text>
             </TouchableOpacity>
+
             {showDatePicker && (
               <DateTimePicker
-                value={new Date()}
+                value={dateValue}
                 mode="date"
                 display={Platform.OS === "ios" ? "spinner" : "calendar"}
                 onChange={onChangeDate}
@@ -256,7 +267,7 @@ function DetalhesMovimentoScreen({
               end={{ x: 1, y: 1 }}
               style={styles.saveButton}
             >
-              <Text style={styles.saveButtonText}>Guardar movimentação</Text>
+            <Text style={styles.saveButtonText}>Guardar movimentação</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -364,7 +375,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.08)",
   },
   dateTagText: { color: "#94A3B8", fontWeight: "600" },
-  dateBtnText: { color: "#fff", fontSize: 16 },
 });
 
 export default DetalhesMovimentoScreen;

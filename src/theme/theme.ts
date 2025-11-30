@@ -47,3 +47,15 @@ export const GRADIENTS = {
   incomeChip: ["#16A34A", "#22C55E"],
   expenseChip: ["#374151", "#4B5563"],
 };
+
+export const RADIUS = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+};
+
+export const SPACE = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+};
