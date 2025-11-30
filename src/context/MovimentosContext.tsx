@@ -1,10 +1,6 @@
+// src/context/MovimentosContext.tsx
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Platform } from "react-native";
-
-import { execSql as execSqlNative } from "../db";
-import { execSql as execSqlWeb } from "../db.web";
-
-const execSql = Platform.OS === "web" ? execSqlWeb : execSqlNative;
+import { execSql } from "../db";
 
 export type Movimento = {
   id: string;
@@ -44,18 +40,20 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
 
   useEffect(() => {
-    // A criação da tabela passa a ser responsabilidade de db.ts / db.web.ts
-    // Aqui apenas carregamos os dados.
     loadMovimentos();
   }, []);
 
   async function loadMovimentos() {
     try {
-      // IMPORTANTE: execSql deve devolver um array de linhas para SELECT
-      const rows: any[] = await execSql(
+      // o teu db.ts devolve { rows: { _array } } para SELECT
+      const res: any = await execSql(
         "SELECT * FROM movimentos ORDER BY date DESC, created_at DESC",
         []
       );
+
+      const rows: any[] = Array.isArray(res)
+        ? res
+        : res?.rows?._array ?? [];
 
       const mapped: Movimento[] = rows.map((r: any) => ({
         id: String(r.id),
@@ -111,6 +109,7 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
         ]
       );
 
+      // só atualizamos o state se o INSERT não rebentar
       setMovimentos((prev) => [novo, ...prev]);
     } catch (err) {
       console.error("Erro ao adicionar movimento", err);

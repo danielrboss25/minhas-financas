@@ -1,11 +1,15 @@
+// App.tsx
 import "react-native-gesture-handler";
 import React from "react";
 import { StatusBar } from "expo-status-bar";
-import { NavigationContainer } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  DefaultTheme,
+} from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider } from "react-native-safe-area-context"; // Garantir que SafeArea seja usado corretamente
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
   Wallet,
@@ -28,7 +32,7 @@ import { MovimentosProvider } from "./src/context/MovimentosContext";
 export type FinancasStackParamList = {
   FinancasMain: undefined;
   NovaMovimentacao: undefined;
-  MovimentoDetalhe: { id: string }; // Ajuste no tipo para detalhar o ID
+  MovimentoDetalhe: { id: string };
 };
 
 export type RootTabParamList = {
@@ -37,28 +41,22 @@ export type RootTabParamList = {
   Tarefas: undefined;
   Refeicoes: undefined;
   Ideias: undefined;
-  Tabs: undefined;
-  NovaMovimentacao: undefined;
-  MovimentoDetalhe: { id: string }; // Aqui, garantindo que a propriedade `id` seja do tipo string
 };
 
-
 const Tab = createBottomTabNavigator<RootTabParamList>();
-const FinancasStack = createNativeStackNavigator<FinancasStackParamList>();
+const FinancasStack =
+  createNativeStackNavigator<FinancasStackParamList>();
 
 // --------- STACK SÓ PARA A ABA FINANÇAS ---------
 function FinancasStackNavigator() {
   return (
     <FinancasStack.Navigator
-      screenOptions={{
-        headerShown: false, // Desabilita o header para todas as telas do Stack
-      }}
-      // Adicionando id (se necessário) ou passando undefined, conforme o tipo esperado
-      id={undefined}  // Adicionar esta linha pode resolver o erro
+      screenOptions={{ headerShown: false }}
+      id={undefined}
     >
-      <FinancasStack.Screen 
-        name="FinancasMain" 
-        component={FinanceScreen} 
+      <FinancasStack.Screen
+        name="FinancasMain"
+        component={FinanceScreen}
       />
       <FinancasStack.Screen
         name="NovaMovimentacao"
@@ -67,19 +65,29 @@ function FinancasStackNavigator() {
       <FinancasStack.Screen
         name="MovimentoDetalhe"
         component={DetalhesMovimentoScreen}
-         initialParams={{ id: "someId" }}
       />
     </FinancasStack.Navigator>
   );
 }
 
+// --------- TEMA ESCURO PARA O NAVIGATIONCONTAINER ---------
+const navTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: "#020617", // fundo base da navegação
+  },
+};
+
 // --------- APP ---------
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView
+      style={{ flex: 1, backgroundColor: "#020617" }} // fundo raiz escuro
+    >
       <SafeAreaProvider>
         <StatusBar style="light" />
-        <NavigationContainer>
+        <NavigationContainer theme={navTheme}>
           <MovimentosProvider>
             <Tab.Navigator
               screenOptions={{
@@ -97,7 +105,7 @@ export default function App() {
                   fontWeight: "600",
                 },
               }}
-               id={undefined}
+              id={undefined}
             >
               <Tab.Screen
                 name="Home"
@@ -109,14 +117,18 @@ export default function App() {
                   ),
                 }}
               />
+
               <Tab.Screen
                 name="FinancasStack"
                 component={FinancasStackNavigator}
                 options={{
                   title: "Finanças",
-                  tabBarIcon: ({ color }) => <Wallet color={color} size={20} />,
+                  tabBarIcon: ({ color }) => (
+                    <Wallet color={color} size={20} />
+                  ),
                 }}
               />
+
               <Tab.Screen
                 name="Tarefas"
                 component={TasksScreen}
@@ -126,6 +138,7 @@ export default function App() {
                   ),
                 }}
               />
+
               <Tab.Screen
                 name="Refeicoes"
                 component={MealsScreen}
@@ -136,6 +149,7 @@ export default function App() {
                   ),
                 }}
               />
+
               <Tab.Screen
                 name="Ideias"
                 component={IdeasScreen}
