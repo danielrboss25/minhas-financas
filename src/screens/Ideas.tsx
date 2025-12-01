@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -20,6 +21,8 @@ import {
   NotebookPen,
 } from "lucide-react-native";
 import { MotiView } from "moti";
+
+import { execSql } from "../db";
 
 type Idea = {
   id: string;
@@ -58,13 +61,101 @@ const DEFAULT_IDEAS: Idea[] = [
 ];
 
 export default function IdeasScreen() {
-  const [ideas, setIdeas] = useState<Idea[]>(DEFAULT_IDEAS);
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [filterTag, setFilterTag] = useState<string>("Todas");
 
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [tag, setTag] = useState("");
+
+  // ---------- HELPERS SQLITE ----------
+
+  function mapRowToIdea(row: any): Idea {
+    return {
+      id: String(row.id),
+      title: row.title ?? "",
+      body: row.body ?? "",
+      tag: row.tag ?? "",
+      pinned: row.pinned === 1,
+      createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+    };
+  }
+
+  async function ensureTableExists() {
+    if (Platform.OS === "web") return; // web fica só em memória
+
+    await execSql(
+      `
+      CREATE TABLE IF NOT EXISTS ideas (
+        id TEXT PRIMARY KEY NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT,
+        tag TEXT,
+        pinned INTEGER,
+        created_at TEXT
+      );
+    `
+    );
+  }
+
+  async function loadIdeasFromDb() {
+    if (Platform.OS === "web") {
+      // fallback: usa defaults em memória
+      setIdeas(DEFAULT_IDEAS);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await ensureTableExists();
+
+      const res = await execSql<{ rows: { _array: any[] } }>(
+        "SELECT * FROM ideas ORDER BY datetime(created_at) DESC;"
+      );
+      let rows = res.rows._array;
+
+      // se a tabela estiver vazia, semeia com as default
+      if (!rows || rows.length === 0) {
+        for (const idea of DEFAULT_IDEAS) {
+          await execSql(
+            `INSERT OR REPLACE INTO ideas (id, title, body, tag, pinned, created_at)
+             VALUES (?, ?, ?, ?, ?, ?);`,
+            [
+              idea.id,
+              idea.title,
+              idea.body,
+              idea.tag,
+              idea.pinned ? 1 : 0,
+              idea.createdAt.toISOString(),
+            ]
+          );
+        }
+
+        const res2 = await execSql<{ rows: { _array: any[] } }>(
+          "SELECT * FROM ideas ORDER BY datetime(created_at) DESC;"
+        );
+        rows = res2.rows._array;
+      }
+
+      const mapped = rows.map(mapRowToIdea);
+      setIdeas(mapped);
+    } catch (e) {
+      console.error("Erro a carregar ideias de SQLite:", e);
+      // fallback duro se algo correr mal
+      setIdeas(DEFAULT_IDEAS);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadIdeasFromDb();
+  }, []);
+
+  // ---------- FORM / MODAL ----------
 
   function resetForm() {
     setTitle("");
@@ -81,29 +172,67 @@ export default function IdeasScreen() {
     setModalVisible(false);
   }
 
-  function addIdea() {
+  async function addIdea() {
     if (!title.trim() && !body.trim()) return;
 
+    const now = new Date();
     const newIdea: Idea = {
       id: Date.now().toString(),
       title: title.trim() || "Ideia sem título",
       body: body.trim(),
       tag: tag.trim() || "Sem tag",
       pinned: false,
-      createdAt: new Date(),
+      createdAt: now,
     };
 
     setIdeas((prev) => [newIdea, ...prev]);
+
+    if (Platform.OS !== "web") {
+      try {
+        await execSql(
+          `INSERT OR REPLACE INTO ideas (id, title, body, tag, pinned, created_at)
+           VALUES (?, ?, ?, ?, ?, ?);`,
+          [
+            newIdea.id,
+            newIdea.title,
+            newIdea.body,
+            newIdea.tag,
+            0,
+            now.toISOString(),
+          ]
+        );
+      } catch (e) {
+        console.error("Erro a guardar ideia em SQLite:", e);
+      }
+    }
+
     closeModal();
   }
 
   function togglePinned(id: string) {
+    // atualiza imediatamente no UI
     setIdeas((prev) =>
       prev.map((idea) =>
         idea.id === id ? { ...idea, pinned: !idea.pinned } : idea
       )
     );
+
+    // atualiza em SQLite em background
+    if (Platform.OS !== "web") {
+      const current = ideas.find((i) => i.id === id);
+      if (!current) return;
+
+      const newPinned = !current.pinned;
+      execSql("UPDATE ideas SET pinned = ? WHERE id = ?;", [
+        newPinned ? 1 : 0,
+        id,
+      ]).catch((e) => {
+        console.error("Erro a atualizar pinned em SQLite:", e);
+      });
+    }
   }
+
+  // ---------- DERIVADOS ----------
 
   const availableTags = useMemo(() => {
     const set = new Set<string>();
@@ -113,10 +242,7 @@ export default function IdeasScreen() {
     return Array.from(set);
   }, [ideas]);
 
-  const pinnedIdeas = useMemo(
-    () => ideas.filter((i) => i.pinned),
-    [ideas]
-  );
+  const pinnedIdeas = useMemo(() => ideas.filter((i) => i.pinned), [ideas]);
 
   const filteredIdeas = useMemo(() => {
     const source = ideas.filter((i) => !i.pinned);
@@ -138,6 +264,8 @@ export default function IdeasScreen() {
     }).length;
     return { total, pinned, today };
   }, [ideas]);
+
+  // ---------- UI ----------
 
   return (
     <View style={styles.root}>
@@ -187,11 +315,19 @@ export default function IdeasScreen() {
         contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
+        {loading && (
+          <Text style={[styles.emptyText, { marginTop: 20 }]}>
+            A carregar ideias…
+          </Text>
+        )}
+
         {/* Secção de ideias fixadas */}
-        {pinnedIdeas.length > 0 && (
+        {!loading && pinnedIdeas.length > 0 && (
           <View style={{ marginTop: 16, marginBottom: 12 }}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={styles.sectionHeaderColumn}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
                 <Sparkles color="#E5E7EB" size={16} />
                 <Text style={styles.sectionTitle}>Fixadas</Text>
               </View>
@@ -239,109 +375,120 @@ export default function IdeasScreen() {
         )}
 
         {/* Filtros por tag */}
-        <View style={{ marginTop: pinnedIdeas.length > 0 ? 4 : 18, marginBottom: 10 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={styles.sectionTitle}>Todas as ideias</Text>
-            <Text style={styles.sectionSubtitle}>Filtra por tema para manter…</Text>
-          </View>
-
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingVertical: 4 }}
+        {!loading && (
+          <View
+            style={{
+              marginTop: pinnedIdeas.length > 0 ? 4 : 18,
+              marginBottom: 10,
+            }}
           >
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={[
-                styles.filterChip,
-                filterTag === "Todas" && styles.filterChipActive,
-              ]}
-              onPress={() => setFilterTag("Todas")}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filterTag === "Todas" && styles.filterChipTextActive,
-                ]}
-              >
-                Todas
+            <View style={{ marginBottom: 4 }}>
+              <Text style={styles.sectionTitle}>Todas as ideias</Text>
+              <Text style={[styles.sectionSubtitle, { marginTop: 2 }]}>
+                Filtra por tema para manter a cabeça arrumada.
               </Text>
-            </TouchableOpacity>
+            </View>
 
-            {availableTags.map((t) => {
-              const selected = filterTag === t;
-              return (
-                <TouchableOpacity
-                  key={t}
-                  activeOpacity={0.85}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingVertical: 4 }}
+            >
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={[
+                  styles.filterChip,
+                  filterTag === "Todas" && styles.filterChipActive,
+                ]}
+                onPress={() => setFilterTag("Todas")}
+              >
+                <Text
                   style={[
-                    styles.filterChip,
-                    selected && styles.filterChipActive,
+                    styles.filterChipText,
+                    filterTag === "Todas" && styles.filterChipTextActive,
                   ]}
-                  onPress={() => setFilterTag(t)}
                 >
-                  <Text
+                  Todas
+                </Text>
+              </TouchableOpacity>
+
+              {availableTags.map((t) => {
+                const selected = filterTag === t;
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    activeOpacity={0.85}
                     style={[
-                      styles.filterChipText,
-                      selected && styles.filterChipTextActive,
+                      styles.filterChip,
+                      selected && styles.filterChipActive,
                     ]}
+                    onPress={() => setFilterTag(t)}
                   >
-                    {t}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        selected && styles.filterChipTextActive,
+                      ]}
+                    >
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Lista de ideias normais */}
-        <View style={{ marginBottom: 16 }}>
-          {filteredIdeas.length === 0 ? (
-            <Text style={styles.emptyText}>
-              Nenhuma ideia com esse filtro. Experimenta outro ou cria uma nova.
-            </Text>
-          ) : (
-            filteredIdeas.map((idea, index) => (
-              <MotiView
-                key={idea.id}
-                from={{ opacity: 0, translateY: 8 }}
-                animate={{ opacity: 1, translateY: 0 }}
-                transition={{ type: "timing", duration: 280 + index * 40 }}
-                style={styles.card}
-              >
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.ideaTitle} numberOfLines={1}>
-                    {idea.title}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => togglePinned(idea.id)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Pin
-                      color={idea.pinned ? "#22C55E" : "#64748B"}
-                      size={18}
-                    />
-                  </TouchableOpacity>
-                </View>
-
-                {idea.body ? (
-                  <Text style={styles.ideaBody} numberOfLines={3}>
-                    {idea.body}
-                  </Text>
-                ) : null}
-
-                <View style={styles.tagRow}>
-                  <View style={styles.tagPillSecondary}>
-                    <TagIcon color="#9CA3AF" size={12} />
-                    <Text style={styles.tagTextSecondary}>{idea.tag}</Text>
+        {!loading && (
+          <View style={{ marginBottom: 16 }}>
+            {filteredIdeas.length === 0 ? (
+              <Text style={styles.emptyText}>
+                Nenhuma ideia com esse filtro. Experimenta outro ou cria uma
+                nova.
+              </Text>
+            ) : (
+              filteredIdeas.map((idea, index) => (
+                <MotiView
+                  key={idea.id}
+                  from={{ opacity: 0, translateY: 8 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  transition={{ type: "timing", duration: 280 + index * 40 }}
+                  style={styles.card}
+                >
+                  <View style={styles.cardHeaderRow}>
+                    <Text style={styles.ideaTitle} numberOfLines={1}>
+                      {idea.title}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => togglePinned(idea.id)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Pin
+                        color={idea.pinned ? "#22C55E" : "#64748B"}
+                        size={18}
+                      />
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.dateTextSecondary}>Nota rápida</Text>
-                </View>
-              </MotiView>
-            ))
-          )}
-        </View>
+
+                  {idea.body ? (
+                    <Text style={styles.ideaBody} numberOfLines={3}>
+                      {idea.body}
+                    </Text>
+                  ) : null}
+
+                  <View style={styles.tagRow}>
+                    <View style={styles.tagPillSecondary}>
+                      <TagIcon color="#9CA3AF" size={12} />
+                      <Text style={styles.tagTextSecondary}>{idea.tag}</Text>
+                    </View>
+                    <Text style={styles.dateTextSecondary}>Nota rápida</Text>
+                  </View>
+                </MotiView>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* FAB */}
@@ -363,7 +510,9 @@ export default function IdeasScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
                 <NotebookPen color="#F9FAFB" size={20} />
                 <Text style={styles.modalTitle}>Nova ideia</Text>
               </View>
@@ -435,19 +584,19 @@ export default function IdeasScreen() {
   );
 }
 
+/* styles iguais aos que já tinhas */
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "#020617",
   },
   header: {
-  paddingTop: 60,
-  paddingBottom: 26,
-  paddingHorizontal: 22,
-  borderBottomLeftRadius: 22,
-  borderBottomRightRadius: 22,
+    paddingTop: 60,
+    paddingBottom: 26,
+    paddingHorizontal: 22,
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
   },
-
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -496,11 +645,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 2,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 6,
+
+  sectionHeaderColumn: {
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 16,
@@ -510,10 +657,7 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     fontSize: 11,
     color: "#9CA3AF",
-  },
-  section: {
-  marginTop: 16,
-  marginBottom: 16,
+    marginTop: 2,
   },
 
   pinnedCard: {

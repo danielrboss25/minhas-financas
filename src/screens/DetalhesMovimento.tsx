@@ -25,7 +25,10 @@ type DetalhesMovimentoScreenProps = {
   navigation: any;
 };
 
-function DetalhesMovimentoScreen({ route, navigation }: DetalhesMovimentoScreenProps) {
+function DetalhesMovimentoScreen({
+  route,
+  navigation,
+}: DetalhesMovimentoScreenProps) {
   const { id } = route.params;
   const { movimentos, updateMovimento } = useMovimentos();
 
@@ -267,7 +270,7 @@ function DetalhesMovimentoScreen({ route, navigation }: DetalhesMovimentoScreenP
               end={{ x: 1, y: 1 }}
               style={styles.saveButton}
             >
-            <Text style={styles.saveButtonText}>Guardar movimentação</Text>
+              <Text style={styles.saveButtonText}>Guardar movimentação</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>

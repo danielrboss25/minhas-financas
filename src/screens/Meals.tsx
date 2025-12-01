@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Modal,
   TextInput,
   Pressable,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -19,6 +20,8 @@ import {
   Sandwich,
 } from "lucide-react-native";
 import { MotiView } from "moti";
+
+import { execSql } from "../db";
 
 type MealType = "Pequeno-almoço" | "Almoço" | "Jantar" | "Snack";
 
@@ -77,7 +80,9 @@ const DEFAULT_MEALS: Meal[] = [
 ];
 
 export default function MealsScreen() {
-  const [meals, setMeals] = useState<Meal[]>(DEFAULT_MEALS);
+  const [meals, setMeals] = useState<Meal[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [selectedDay, setSelectedDay] = useState<string>(DAYS[0]);
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -87,6 +92,101 @@ export default function MealsScreen() {
   const [notes, setNotes] = useState("");
   const [tag, setTag] = useState("");
   const [calories, setCalories] = useState("");
+
+  // ---------- HELPERS SQLITE ----------
+
+  function mapRowToMeal(row: any): Meal {
+    return {
+      id: String(row.id),
+      day: row.day ?? "",
+      type: row.type as MealType,
+      title: row.title ?? "",
+      notes: row.notes ?? undefined,
+      tag: row.tag ?? undefined,
+      calories:
+        typeof row.calories === "number"
+          ? row.calories
+          : row.calories != null
+          ? Number(row.calories)
+          : undefined,
+      createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+    };
+  }
+
+  async function ensureTableExists() {
+    if (Platform.OS === "web") return;
+
+    await execSql(`
+      CREATE TABLE IF NOT EXISTS meals (
+        id TEXT PRIMARY KEY NOT NULL,
+        day TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        notes TEXT,
+        calories REAL,
+        tag TEXT,
+        created_at TEXT
+      );
+    `);
+  }
+
+  async function loadMealsFromDb() {
+    if (Platform.OS === "web") {
+      // em web fica só em memória
+      setMeals(DEFAULT_MEALS);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await ensureTableExists();
+
+      const res = await execSql<{ rows: { _array: any[] } }>(
+        "SELECT * FROM meals ORDER BY datetime(created_at) DESC;"
+      );
+      let rows = res.rows._array;
+
+      if (!rows || rows.length === 0) {
+        // semear defaults
+        for (const meal of DEFAULT_MEALS) {
+          await execSql(
+            `INSERT OR REPLACE INTO meals
+             (id, day, type, title, notes, calories, tag, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+            [
+              meal.id,
+              meal.day,
+              meal.type,
+              meal.title,
+              meal.notes ?? null,
+              meal.calories ?? null,
+              meal.tag ?? null,
+              meal.createdAt.toISOString(),
+            ]
+          );
+        }
+
+        const res2 = await execSql<{ rows: { _array: any[] } }>(
+          "SELECT * FROM meals ORDER BY datetime(created_at) DESC;"
+        );
+        rows = res2.rows._array;
+      }
+
+      const mapped = rows.map(mapRowToMeal);
+      setMeals(mapped);
+    } catch (e) {
+      console.error("Erro a carregar refeições de SQLite:", e);
+      setMeals(DEFAULT_MEALS);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadMealsFromDb();
+  }, []);
+
+  // ---------- FORM ----------
 
   function resetForm() {
     setNewDay(selectedDay);
@@ -106,10 +206,12 @@ export default function MealsScreen() {
     setModalVisible(false);
   }
 
-  function addMeal() {
+  async function addMeal() {
     if (!title.trim()) return;
 
     const kcal = Number(calories.replace(",", "."));
+    const now = new Date();
+
     const newMeal: Meal = {
       id: Date.now().toString(),
       day: newDay,
@@ -118,12 +220,38 @@ export default function MealsScreen() {
       notes: notes.trim() || undefined,
       tag: tag.trim() || undefined,
       calories: Number.isFinite(kcal) ? kcal : undefined,
-      createdAt: new Date(),
+      createdAt: now,
     };
 
+    // atualiza logo no UI
     setMeals((prev) => [newMeal, ...prev]);
+
+    if (Platform.OS !== "web") {
+      try {
+        await execSql(
+          `INSERT OR REPLACE INTO meals
+           (id, day, type, title, notes, calories, tag, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            newMeal.id,
+            newMeal.day,
+            newMeal.type,
+            newMeal.title,
+            newMeal.notes ?? null,
+            newMeal.calories ?? null,
+            newMeal.tag ?? null,
+            now.toISOString(),
+          ]
+        );
+      } catch (e) {
+        console.error("Erro a guardar refeição em SQLite:", e);
+      }
+    }
+
     closeModal();
   }
+
+  // ---------- DERIVADOS ----------
 
   const stats = useMemo(() => {
     const total = meals.length;
@@ -150,6 +278,8 @@ export default function MealsScreen() {
     return map;
   }, [mealsForDay]);
 
+  // ---------- UI ----------
+
   return (
     <View style={styles.root}>
       {/* Header */}
@@ -166,7 +296,8 @@ export default function MealsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Refeições & Planeamento</Text>
             <Text style={styles.headerSubtitle}>
-              Organiza a semana para não viver à base de fast-food e arrependimento.
+              Organiza a semana para não viver à base de fast-food e
+              arrependimento.
             </Text>
           </View>
         </View>
@@ -198,68 +329,87 @@ export default function MealsScreen() {
         contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
+        {loading && (
+          <Text style={[styles.emptyText, { marginTop: 20 }]}>
+            A carregar refeições…
+          </Text>
+        )}
+
         {/* Dias da semana */}
-        <View style={{ marginTop: 16 }}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Plano semanal</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <CalendarDays color="#9CA3AF" size={14} />
+        {!loading && (
+          <View style={{ marginTop: 16 }}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.sectionTitle}>Plano semanal</Text>
+                <CalendarDays
+                  color="#9CA3AF"
+                  size={16}
+                  style={{ marginLeft: 8 }}
+                />
+              </View>
+
               <Text style={styles.sectionSubtitle}>
                 Escolhe o dia para ver as refeições.
               </Text>
             </View>
-          </View>
 
-          <ScrollView
-            horizontal
-            contentContainerStyle={{ paddingVertical: 6 }}
-            showsHorizontalScrollIndicator={false}
-          >
-            {DAYS.map((day) => {
-              const selected = selectedDay === day;
-              const hasMeals = meals.some((m) => m.day === day);
-              return (
-                <TouchableOpacity
-                  key={day}
-                  activeOpacity={0.85}
-                  style={[
-                    styles.dayChip,
-                    selected && styles.dayChipActive,
-                    hasMeals && !selected && styles.dayChipWithMeals,
-                  ]}
-                  onPress={() => setSelectedDay(day)}
-                >
-                  <Text
+            <ScrollView
+              horizontal
+              contentContainerStyle={{ paddingVertical: 6 }}
+              showsHorizontalScrollIndicator={false}
+            >
+              {DAYS.map((day) => {
+                const selected = selectedDay === day;
+                const hasMeals = meals.some((m) => m.day === day);
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    activeOpacity={0.85}
                     style={[
-                      styles.dayChipText,
-                      selected && styles.dayChipTextActive,
+                      styles.dayChip,
+                      selected && styles.dayChipActive,
+                      hasMeals && !selected && styles.dayChipWithMeals,
                     ]}
+                    onPress={() => setSelectedDay(day)}
                   >
-                    {day.substring(0, 3)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+                    <Text
+                      style={[
+                        styles.dayChipText,
+                        selected && styles.dayChipTextActive,
+                      ]}
+                    >
+                      {day.substring(0, 3)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Lista das refeições do dia */}
-        <View style={{ marginTop: 14 }}>
-          {(["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]).map(
-            (type) => {
+        {!loading && (
+          <View style={{ marginTop: 14 }}>
+            {(
+              ["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]
+            ).map((type) => {
               const list = groupedByType[type];
               if (list.length === 0) return null;
 
               return (
                 <View key={type} style={{ marginBottom: 14 }}>
                   <View style={styles.mealTypeHeaderRow}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
                       {type === "Pequeno-almoço" && (
                         <Soup color="#FACC15" size={16} />
                       )}
-                      {type === "Almoço" && (
-                        <Flame color="#F97316" size={16} />
-                      )}
+                      {type === "Almoço" && <Flame color="#F97316" size={16} />}
                       {type === "Jantar" && (
                         <Utensils color="#60A5FA" size={16} />
                       )}
@@ -311,16 +461,16 @@ export default function MealsScreen() {
                   ))}
                 </View>
               );
-            }
-          )}
+            })}
 
-          {mealsForDay.length === 0 && (
-            <Text style={styles.emptyText}>
-              Ainda não tens refeições planeadas para {selectedDay}.  
-              Adiciona uma para deixares de improvisar.
-            </Text>
-          )}
-        </View>
+            {mealsForDay.length === 0 && (
+              <Text style={styles.emptyText}>
+                Ainda não tens refeições planeadas para {selectedDay}. Adiciona
+                uma para deixares de improvisar.
+              </Text>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* FAB */}
@@ -345,7 +495,8 @@ export default function MealsScreen() {
               <View>
                 <Text style={styles.modalTitle}>Nova refeição / receita</Text>
                 <Text style={styles.modalSubtitle}>
-                  Planeia o que vais comer em vez de decidir quando já estás com fome.
+                  Planeia o que vais comer em vez de decidir quando já estás com
+                  fome.
                 </Text>
               </View>
               <Pressable onPress={closeModal}>
@@ -389,31 +540,31 @@ export default function MealsScreen() {
             <View style={{ marginBottom: 10 }}>
               <Text style={styles.modalLabel}>Tipo de refeição</Text>
               <View style={styles.mealTypeSelectorRow}>
-                {(["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]).map(
-                  (type) => {
-                    const selected = newType === type;
-                    return (
-                      <TouchableOpacity
-                        key={type}
-                        activeOpacity={0.85}
+                {(
+                  ["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]
+                ).map((type) => {
+                  const selected = newType === type;
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      activeOpacity={0.85}
+                      style={[
+                        styles.mealTypeChip,
+                        selected && styles.mealTypeChipActive,
+                      ]}
+                      onPress={() => setNewType(type)}
+                    >
+                      <Text
                         style={[
-                          styles.mealTypeChip,
-                          selected && styles.mealTypeChipActive,
+                          styles.mealTypeChipText,
+                          selected && styles.mealTypeChipTextActive,
                         ]}
-                        onPress={() => setNewType(type)}
                       >
-                        <Text
-                          style={[
-                            styles.mealTypeChipText,
-                            selected && styles.mealTypeChipTextActive,
-                          ]}
-                        >
-                          {type}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  }
-                )}
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
@@ -493,6 +644,7 @@ export default function MealsScreen() {
   );
 }
 
+/* estilos iguais aos teus */
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -554,10 +706,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
     marginBottom: 6,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   sectionTitle: {
     fontSize: 16,
@@ -565,6 +718,7 @@ const styles = StyleSheet.create({
     color: "#E5E7EB",
   },
   sectionSubtitle: {
+    marginTop: 4,
     fontSize: 11,
     color: "#9CA3AF",
   },

@@ -51,9 +51,7 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
         []
       );
 
-      const rows: any[] = Array.isArray(res)
-        ? res
-        : res?.rows?._array ?? [];
+      const rows: any[] = Array.isArray(res) ? res : res?.rows?._array ?? [];
 
       const mapped: Movimento[] = rows.map((r: any) => ({
         id: String(r.id),
@@ -62,8 +60,7 @@ export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
         title: r.title ?? r.description ?? "",
         category: r.category ?? "Sem categoria",
         date: r.date ?? "",
-        amount:
-          typeof r.amount === "number" ? r.amount : Number(r.amount) || 0,
+        amount: typeof r.amount === "number" ? r.amount : Number(r.amount) || 0,
         created_at: r.created_at ?? undefined,
       }));
 

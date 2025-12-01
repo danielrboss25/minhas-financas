@@ -15,6 +15,10 @@
         "appVersionSource": "remote"
       }
     },
+    "androidNavigationBar": {
+    "barStyle": "light-content",
+     "backgroundColor": "#020617"
+    },
     "ios": {
       "supportsTablet": true
     },

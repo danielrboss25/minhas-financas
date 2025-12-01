@@ -1,15 +1,16 @@
-// App.tsx
 import "react-native-gesture-handler";
-import React from "react";
+import React, { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import {
   NavigationContainer,
   DefaultTheme,
+  Theme,
 } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as NavigationBar from "expo-navigation-bar";
 
 import {
   Wallet,
@@ -44,20 +45,19 @@ export type RootTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
-const FinancasStack =
-  createNativeStackNavigator<FinancasStackParamList>();
+const FinancasStack = createNativeStackNavigator<FinancasStackParamList>();
 
 // --------- STACK SÓ PARA A ABA FINANÇAS ---------
 function FinancasStackNavigator() {
   return (
     <FinancasStack.Navigator
-      screenOptions={{ headerShown: false }}
-      id={undefined}
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: "#020617" }, // fundo escuro dentro do stack
+      }}
+      id={undefined} // satisfaz o tipo manhoso do navigator
     >
-      <FinancasStack.Screen
-        name="FinancasMain"
-        component={FinanceScreen}
-      />
+      <FinancasStack.Screen name="FinancasMain" component={FinanceScreen} />
       <FinancasStack.Screen
         name="NovaMovimentacao"
         component={NovaMovimentacaoScreen}
@@ -71,20 +71,28 @@ function FinancasStackNavigator() {
 }
 
 // --------- TEMA ESCURO PARA O NAVIGATIONCONTAINER ---------
-const navTheme = {
+const navTheme: Theme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: "#020617", // fundo base da navegação
+    background: "#020617", // fundo da app inteira
+    card: "#020617", // fundo das “cards” de navegação (tabs, headers, etc.)
+    border: "#111827",
+    primary: "#38BDF8",
+    text: "#F9FAFB",
   },
 };
 
 // --------- APP ---------
 export default function App() {
+  useEffect(() => {
+    // cor da barra de navegação (a tal barra branca)
+    NavigationBar.setBackgroundColorAsync("#020617");
+    // ícones claros
+    NavigationBar.setButtonStyleAsync("light");
+  }, []);
   return (
-    <GestureHandlerRootView
-      style={{ flex: 1, backgroundColor: "#020617" }} // fundo raiz escuro
-    >
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#020617" }}>
       <SafeAreaProvider>
         <StatusBar style="light" />
         <NavigationContainer theme={navTheme}>
@@ -105,7 +113,7 @@ export default function App() {
                   fontWeight: "600",
                 },
               }}
-              id={undefined}
+              id={undefined} // idem: cala o TS e em runtime é irrelevante
             >
               <Tab.Screen
                 name="Home"
@@ -123,9 +131,7 @@ export default function App() {
                 component={FinancasStackNavigator}
                 options={{
                   title: "Finanças",
-                  tabBarIcon: ({ color }) => (
-                    <Wallet color={color} size={20} />
-                  ),
+                  tabBarIcon: ({ color }) => <Wallet color={color} size={20} />,
                 }}
               />
 

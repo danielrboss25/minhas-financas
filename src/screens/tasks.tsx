@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,9 @@ import {
   Calendar,
   Edit3,
 } from "lucide-react-native";
+
+import { execSql as execSqlNative } from "../db";
+import { execSql as execSqlWeb } from "../db.web";
 
 type Priority = "alta" | "media" | "baixa";
 type Bucket = "hoje" | "semana" | "mais_tarde" | "todas";
@@ -50,36 +53,19 @@ const PRIORITY_LABELS: Record<Priority, string> = {
   baixa: "Baixa",
 };
 
+// Pequeno helper para lidar com o formato do execSql
+function normalizeRows(result: any): any[] {
+  if (Array.isArray(result)) return result;
+  if (result && result.rows && Array.isArray(result.rows._array)) {
+    return result.rows._array;
+  }
+  return [];
+}
+
+const execSql = Platform.OS === "web" ? execSqlWeb : execSqlNative;
+
 export default function TasksScreen() {
-  const [tasks, setTasks] = useState<Task[]>([
-    {
-      id: "1",
-      title: "Rever plano de treino",
-      notes: "Ajustar cargas de perna e ombro",
-      bucket: "hoje",
-      priority: "alta",
-      done: false,
-      dueLabel: "Hoje",
-    },
-    {
-      id: "2",
-      title: "Organizar notas da faculdade",
-      notes: "Infraestrutura + BD + IA",
-      bucket: "semana",
-      priority: "media",
-      done: false,
-      dueLabel: "Esta semana",
-    },
-    {
-      id: "3",
-      title: "Bloquear sessão de fotografia",
-      notes: "Definir data e local",
-      bucket: "mais_tarde",
-      priority: "baixa",
-      done: true,
-      dueLabel: "Quando der",
-    },
-  ]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   const [activeBucket, setActiveBucket] = useState<Bucket>("hoje");
   const [showModal, setShowModal] = useState(false);
@@ -90,6 +76,34 @@ export default function TasksScreen() {
   const [notes, setNotes] = useState("");
   const [formBucket, setFormBucket] = useState<Bucket>("hoje");
   const [priority, setPriority] = useState<Priority>("media");
+
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
+  async function loadTasks() {
+    try {
+      const result = await execSql<any>(
+        "SELECT * FROM tasks ORDER BY done ASC, datetime(created_at) DESC",
+        []
+      );
+      const rows = normalizeRows(result);
+
+      const mapped: Task[] = rows.map((r: any) => ({
+        id: String(r.id),
+        title: r.title,
+        notes: r.notes ?? undefined,
+        bucket: (r.bucket as Bucket) ?? "hoje",
+        priority: (r.priority as Priority) ?? "media",
+        done: r.done === 1 || r.done === true,
+        dueLabel: r.due_label ?? undefined,
+      }));
+
+      setTasks(mapped);
+    } catch (err) {
+      console.error("Erro ao carregar tarefas", err);
+    }
+  }
 
   function resetForm() {
     setTitle("");
@@ -118,37 +132,83 @@ export default function TasksScreen() {
     resetForm();
   }
 
-  function toggleTaskDone(id: string) {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
-    );
+  async function toggleTaskDone(id: string) {
+    try {
+      const current = tasks.find((t) => t.id === id);
+      if (!current) return;
+
+      const newDone = current.done ? 0 : 1;
+
+      await execSql("UPDATE tasks SET done = ? WHERE id = ?", [newDone, id]);
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
+      );
+    } catch (err) {
+      console.error("Erro ao alternar estado da tarefa", err);
+    }
   }
 
-  function deleteTask(id: string) {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+  async function deleteTask(id: string) {
+    try {
+      await execSql("DELETE FROM tasks WHERE id = ?", [id]);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      console.error("Erro ao apagar tarefa", err);
+    }
   }
 
-  function handleSubmit() {
+  function getDueLabelFromBucket(b: Bucket): string | undefined {
+    if (b === "hoje") return "Hoje";
+    if (b === "semana") return "Esta semana";
+    if (b === "mais_tarde") return "Quando der";
+    return undefined;
+  }
+
+  async function handleSubmit() {
     if (!title.trim()) {
       return;
     }
 
+    const dueLabel = getDueLabelFromBucket(formBucket);
+
     if (editingTask) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === editingTask.id
-            ? {
-                ...t,
-                title: title.trim(),
-                notes: notes.trim() || undefined,
-                bucket: formBucket,
-                priority,
-              }
-            : t
-        )
-      );
+      try {
+        await execSql(
+          `UPDATE tasks
+           SET title = ?, notes = ?, bucket = ?, priority = ?, due_label = ?
+           WHERE id = ?`,
+          [
+            title.trim(),
+            notes.trim() || null,
+            formBucket,
+            priority,
+            dueLabel ?? null,
+            editingTask.id,
+          ]
+        );
+
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === editingTask.id
+              ? {
+                  ...t,
+                  title: title.trim(),
+                  notes: notes.trim() || undefined,
+                  bucket: formBucket,
+                  priority,
+                  dueLabel,
+                }
+              : t
+          )
+        );
+      } catch (err) {
+        console.error("Erro ao editar tarefa", err);
+      }
     } else {
       const id = Date.now().toString();
+      const createdAt = new Date().toISOString();
+
       const newTask: Task = {
         id,
         title: title.trim(),
@@ -156,16 +216,30 @@ export default function TasksScreen() {
         bucket: formBucket,
         priority,
         done: false,
-        dueLabel:
-          formBucket === "hoje"
-            ? "Hoje"
-            : formBucket === "semana"
-            ? "Esta semana"
-            : formBucket === "mais_tarde"
-            ? "Quando der"
-            : undefined,
+        dueLabel,
       };
-      setTasks((prev) => [newTask, ...prev]);
+
+      try {
+        await execSql(
+          `INSERT INTO tasks
+           (id, title, notes, bucket, priority, done, due_label, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newTask.id,
+            newTask.title,
+            newTask.notes ?? null,
+            newTask.bucket,
+            newTask.priority,
+            newTask.done ? 1 : 0,
+            newTask.dueLabel ?? null,
+            createdAt,
+          ]
+        );
+
+        setTasks((prev) => [newTask, ...prev]);
+      } catch (err) {
+        console.error("Erro ao criar tarefa", err);
+      }
     }
 
     closeModal();
@@ -178,7 +252,6 @@ export default function TasksScreen() {
       list = list.filter((t) => t.bucket === activeBucket);
     }
 
-    // incompletas primeiro
     list.sort((a, b) => {
       if (a.done === b.done) return 0;
       return a.done ? 1 : -1;
@@ -261,10 +334,7 @@ export default function TasksScreen() {
               colors={["#22C55E", "#3B82F6"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={[
-                styles.progressFill,
-                { width: `${stats.completion}%` },
-              ]}
+              style={[styles.progressFill, { width: `${stats.completion}%` }]}
             />
           </View>
 
@@ -277,23 +347,13 @@ export default function TasksScreen() {
 
         {/* Filtros de bucket */}
         <View style={styles.bucketRow}>
-          {(
-            [
-              "hoje",
-              "semana",
-              "mais_tarde",
-              "todas",
-            ] as Bucket[]
-          ).map((b) => {
+          {(["hoje", "semana", "mais_tarde", "todas"] as Bucket[]).map((b) => {
             const selected = b === activeBucket;
             return (
               <TouchableOpacity
                 key={b}
                 activeOpacity={0.85}
-                style={[
-                  styles.bucketChip,
-                  selected && styles.bucketChipActive,
-                ]}
+                style={[styles.bucketChip, selected && styles.bucketChipActive]}
                 onPress={() => setActiveBucket(b)}
               >
                 <Text
@@ -374,10 +434,7 @@ export default function TasksScreen() {
                         )}
                       </View>
                       {task.notes && (
-                        <Text
-                          style={styles.taskNotes}
-                          numberOfLines={1}
-                        >
+                        <Text style={styles.taskNotes} numberOfLines={1}>
                           {task.notes}
                         </Text>
                       )}
@@ -422,11 +479,7 @@ export default function TasksScreen() {
       </View>
 
       {/* Modal de criação/edição */}
-      <Modal
-        visible={showModal}
-        animationType="slide"
-        transparent
-      >
+      <Modal visible={showModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -439,7 +492,12 @@ export default function TasksScreen() {
                 </Text>
                 <TouchableOpacity
                   onPress={closeModal}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  hitSlop={{
+                    top: 10,
+                    bottom: 10,
+                    left: 10,
+                    right: 10,
+                  }}
                 >
                   <X color="#9CA3AF" size={20} />
                 </TouchableOpacity>
@@ -472,9 +530,7 @@ export default function TasksScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalLabel}>Quando</Text>
                   <View style={styles.bucketSelectorRow}>
-                    {(
-                      ["hoje", "semana", "mais_tarde"] as Bucket[]
-                    ).map((b) => {
+                    {(["hoje", "semana", "mais_tarde"] as Bucket[]).map((b) => {
                       const selected = b === formBucket;
                       return (
                         <TouchableOpacity
@@ -503,9 +559,7 @@ export default function TasksScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalLabel}>Prioridade</Text>
                   <View style={styles.bucketSelectorRow}>
-                    {(
-                      ["alta", "media", "baixa"] as Priority[]
-                    ).map((p) => {
+                    {(["alta", "media", "baixa"] as Priority[]).map((p) => {
                       const selected = p === priority;
                       const color =
                         p === "alta"
@@ -542,10 +596,7 @@ export default function TasksScreen() {
               </View>
 
               <View style={styles.modalActions}>
-                <Pressable
-                  style={styles.modalBtnCancel}
-                  onPress={closeModal}
-                >
+                <Pressable style={styles.modalBtnCancel} onPress={closeModal}>
                   <Text style={styles.modalBtnCancelText}>Cancelar</Text>
                 </Pressable>
                 <Pressable
@@ -565,7 +616,10 @@ export default function TasksScreen() {
   );
 }
 
+// styles iguais aos que já tinhas
 const styles = StyleSheet.create({
+  // … copia exactamente os teus styles daqui para baixo
+  // (não alterei nada nos estilos, só na lógica)
   root: {
     flex: 1,
     backgroundColor: "#020617",
