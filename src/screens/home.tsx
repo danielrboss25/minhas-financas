@@ -52,19 +52,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       >
         {/* =================== HERO / LINHA DO MESTRE =================== */}
         <MotiView
-          from={{ opacity: 0, translateY: 16 }}
-          animate={{ opacity: 1, translateY: 0 }}
+          from={{ opacity: 0, translateY: 16, scale: 0.96 }}
+          animate={{ opacity: 1, translateY: 0, scale: 1 }}
           transition={{ type: "timing", duration: 350 }}
           style={styles.heroWrapper}
         >
+          {/* outline com ligeiro brilho em gradiente */}
           <LinearGradient
-            colors={["#020617", "#020617"]}
+            colors={["#22C55E33", "#38BDF833", "#020617"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.heroOutline}
           >
             <LinearGradient
-              colors={["#0B1120", "#020617"]}
+              colors={["#020617", "#020617"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.heroCard}
@@ -79,13 +80,27 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                   </Text>
                 </View>
 
-                <View style={styles.modeChip}>
-                  <View style={styles.modeDot} />
-                  <View>
-                    <Text style={styles.modeLabel}>Modo</Text>
-                    <Text style={styles.modeValue}>Perigoso</Text>
+                {/* Modo perigoso com badge compacto e pulso */}
+                <MotiView
+                  from={{ scale: 1, opacity: 0.9 }}
+                  animate={{ scale: 1.06, opacity: 1 }}
+                  transition={{
+                    type: "timing",
+                    duration: 1400,
+                    loop: true,
+                    repeatReverse: true,
+                  }}
+                >
+                  <View style={styles.modeChip}>
+                    <View style={styles.modePulseOuter}>
+                      <View style={styles.modeDot} />
+                    </View>
+                    <View>
+                      <Text style={styles.modeLabel}>Modo</Text>
+                      <Text style={styles.modeValue}>Perigoso</Text>
+                    </View>
                   </View>
-                </View>
+                </MotiView>
               </View>
 
               <View style={styles.heroStatsRow}>
@@ -149,8 +164,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           >
             {/* Card Finanças */}
             <MotiView
-              from={{ opacity: 0, translateY: 12 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 12, scale: 0.95 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 320 }}
             >
               <TouchableOpacity
@@ -173,8 +188,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
             {/* Card Tarefas */}
             <MotiView
-              from={{ opacity: 0, translateY: 12 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 12, scale: 0.95 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 340 }}
             >
               <TouchableOpacity
@@ -195,8 +210,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
             {/* Card Refeições */}
             <MotiView
-              from={{ opacity: 0, translateY: 12 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 12, scale: 0.95 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 360 }}
             >
               <TouchableOpacity
@@ -219,8 +234,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
             {/* Card Ideias */}
             <MotiView
-              from={{ opacity: 0, translateY: 12 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 12, scale: 0.95 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 380 }}
             >
               <TouchableOpacity
@@ -257,8 +272,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           <View style={styles.modulesGrid}>
             {/* Finanças */}
             <MotiView
-              from={{ opacity: 0, translateY: 10 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 10, scale: 0.96 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 320 }}
               style={styles.moduleCard}
             >
@@ -289,8 +304,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
             {/* Tarefas */}
             <MotiView
-              from={{ opacity: 0, translateY: 10 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 10, scale: 0.96 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 340 }}
               style={styles.moduleCard}
             >
@@ -316,8 +331,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
             {/* Refeições */}
             <MotiView
-              from={{ opacity: 0, translateY: 10 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 10, scale: 0.96 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 360 }}
               style={styles.moduleCard}
             >
@@ -343,8 +358,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
             {/* Ideias */}
             <MotiView
-              from={{ opacity: 0, translateY: 10 }}
-              animate={{ opacity: 1, translateY: 0 }}
+              from={{ opacity: 0, translateY: 10, scale: 0.96 }}
+              animate={{ opacity: 1, translateY: 0, scale: 1 }}
               transition={{ type: "timing", duration: 380 }}
               style={styles.moduleCard}
             >
@@ -468,22 +483,33 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 19,
   },
+
+  // novo modo perigoso
   modeChip: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(22,163,74,0.18)",
+    backgroundColor: "rgba(22,163,74,0.16)",
     borderWidth: 1,
-    borderColor: "rgba(22,163,74,0.8)",
+    borderColor: "rgba(34,197,94,0.9)",
+  },
+  modePulseOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
   },
   modeDot: {
     width: 8,
     height: 8,
     borderRadius: 999,
     backgroundColor: "#22C55E",
-    marginRight: 8,
   },
   modeLabel: {
     fontSize: 10,
@@ -494,6 +520,7 @@ const styles = StyleSheet.create({
     color: "#BBF7D0",
     fontWeight: "700",
   },
+
   heroStatsRow: {
     flexDirection: "row",
     gap: 12,

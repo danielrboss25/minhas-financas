@@ -1,3 +1,4 @@
+// src/screens/Meals.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -27,13 +28,17 @@ type MealType = "Pequeno-almoço" | "Almoço" | "Jantar" | "Snack";
 
 type Meal = {
   id: string;
-  day: string; // "Segunda", ...
+  day: string;
   type: MealType;
   title: string;
   notes?: string;
   calories?: number;
   tag?: string;
   createdAt: Date;
+};
+
+type MealsScreenProps = {
+  navigation: any;
 };
 
 const DAYS = [
@@ -79,7 +84,7 @@ const DEFAULT_MEALS: Meal[] = [
   },
 ];
 
-export default function MealsScreen() {
+export default function MealsScreen({ navigation }: MealsScreenProps) {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -132,7 +137,6 @@ export default function MealsScreen() {
 
   async function loadMealsFromDb() {
     if (Platform.OS === "web") {
-      // em web fica só em memória
       setMeals(DEFAULT_MEALS);
       setLoading(false);
       return;
@@ -147,7 +151,6 @@ export default function MealsScreen() {
       let rows = res.rows._array;
 
       if (!rows || rows.length === 0) {
-        // semear defaults
         for (const meal of DEFAULT_MEALS) {
           await execSql(
             `INSERT OR REPLACE INTO meals
@@ -223,7 +226,6 @@ export default function MealsScreen() {
       createdAt: now,
     };
 
-    // atualiza logo no UI
     setMeals((prev) => [newMeal, ...prev]);
 
     if (Platform.OS !== "web") {
@@ -282,7 +284,6 @@ export default function MealsScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Header */}
       <LinearGradient
         colors={["#1F2937", "#020617"]}
         start={{ x: 0, y: 0 }}
@@ -335,7 +336,6 @@ export default function MealsScreen() {
           </Text>
         )}
 
-        {/* Dias da semana */}
         {!loading && (
           <View style={{ marginTop: 16 }}>
             <View style={styles.sectionHeader}>
@@ -387,7 +387,6 @@ export default function MealsScreen() {
           </View>
         )}
 
-        {/* Lista das refeições do dia */}
         {!loading && (
           <View style={{ marginTop: 14 }}>
             {(
@@ -426,37 +425,36 @@ export default function MealsScreen() {
                   {list.map((meal, index) => (
                     <MotiView
                       key={meal.id}
-                      from={{ opacity: 0, translateY: 8 }}
+                      from={{ opacity: 0, translateY: 10 }}
                       animate={{ opacity: 1, translateY: 0 }}
-                      transition={{
-                        type: "timing",
-                        duration: 260 + index * 40,
-                      }}
-                      style={styles.mealCard}
+                      transition={{ delay: index * 70 }}
                     >
-                      <Text style={styles.mealTitle} numberOfLines={1}>
-                        {meal.title}
-                      </Text>
-                      {meal.notes ? (
-                        <Text style={styles.mealNotes} numberOfLines={3}>
-                          {meal.notes}
-                        </Text>
-                      ) : null}
-
-                      <View style={styles.mealMetaRow}>
-                        <View style={styles.tagPill}>
-                          <Text style={styles.tagText}>
-                            {meal.tag || "Sem tag"}
-                          </Text>
-                        </View>
-                        <View style={{ flexDirection: "row", gap: 8 }}>
-                          {meal.calories ? (
-                            <Text style={styles.caloriesText}>
-                              {Math.round(meal.calories)} kcal
-                            </Text>
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() =>
+                          navigation.navigate("RefeicaoDetalhe", { meal })
+                        }
+                        style={{ width: "100%" }}
+                      >
+                        <View style={styles.mealCard}>
+                          <Text style={styles.mealTitle}>{meal.title}</Text>
+                          {meal.notes ? (
+                            <Text style={styles.mealNotes}>{meal.notes}</Text>
                           ) : null}
+                          <View style={styles.mealMetaRow}>
+                            {meal.tag && (
+                              <View style={styles.tagPill}>
+                                <Text style={styles.tagText}>{meal.tag}</Text>
+                              </View>
+                            )}
+                            {meal.calories != null && (
+                              <Text style={styles.caloriesText}>
+                                {meal.calories} kcal
+                              </Text>
+                            )}
+                          </View>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     </MotiView>
                   ))}
                 </View>
@@ -473,7 +471,6 @@ export default function MealsScreen() {
         )}
       </ScrollView>
 
-      {/* FAB */}
       <View style={styles.fabWrapper}>
         <TouchableOpacity activeOpacity={0.9} onPress={openModal}>
           <LinearGradient
@@ -487,7 +484,6 @@ export default function MealsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Modal Nova Refeição */}
       <Modal transparent visible={modalVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -644,7 +640,6 @@ export default function MealsScreen() {
   );
 }
 
-/* estilos iguais aos teus */
 const styles = StyleSheet.create({
   root: {
     flex: 1,

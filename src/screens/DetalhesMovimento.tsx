@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  FlatList,
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -15,10 +14,6 @@ import { useMovimentos } from "../context/MovimentosContext";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
 import { pt } from "date-fns/locale";
-
-// O tipo Movimento vem implicitamente da estrutura do contexto,
-// por isso não é estritamente necessário redefinir aqui.
-// Se quiseres mesmo o tipo, importa-o do contexto em vez de duplicar.
 
 type DetalhesMovimentoScreenProps = {
   route: { params: { id: string } };
@@ -53,23 +48,11 @@ function DetalhesMovimentoScreen({
     return parseDate(date);
   }, [date]);
 
-  // categorias únicas derivadas dos movimentos
-  const categories = useMemo(() => {
-    const setCat = new Set<string>();
-    movimentos.forEach((m) => m.category && setCat.add(m.category));
-    return Array.from(setCat).filter(Boolean);
-  }, [movimentos]);
-
-  // input para nova categoria
-  const [newCategory, setNewCategory] = useState("");
-
   useEffect(() => {
     if (movimento) {
       setTitle(movimento.title ?? "");
       setCategory(movimento.category ?? "");
-      // se não tiver data, usa hoje; normaliza para dd/MM/yyyy
       if (movimento.date) {
-        // assumindo que já guardas dd/MM/yyyy
         setDate(movimento.date);
       } else {
         setDate(formatDate(new Date()));
@@ -99,17 +82,6 @@ function DetalhesMovimentoScreen({
     }
   }
 
-  function handleSelectCategory(cat: string) {
-    setCategory(cat);
-  }
-
-  function handleAddCategory() {
-    const trimmed = newCategory.trim();
-    if (!trimmed) return;
-    setCategory(trimmed);
-    setNewCategory("");
-  }
-
   function onChangeDate(_: any, selected?: Date) {
     if (Platform.OS !== "ios") {
       setShowDatePicker(false);
@@ -134,7 +106,7 @@ function DetalhesMovimentoScreen({
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={["#111827", "#020617"]}
+        colors={["#0B1120", "#020617"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.header}
@@ -142,6 +114,7 @@ function DetalhesMovimentoScreen({
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
+          activeOpacity={0.85}
         >
           <ArrowLeft color="#E5E7EB" size={22} />
         </TouchableOpacity>
@@ -151,11 +124,12 @@ function DetalhesMovimentoScreen({
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.card}>
           <Text style={styles.label}>Tipo</Text>
           <Text
-            style={[styles.value, { color: isIncome ? "#22C55E" : "#EF4444" }]}
+            style={[styles.value, { color: isIncome ? "#22C55E" : "#F97373" }]}
           >
             {isIncome ? "Entrada" : "Despesa"}
           </Text>
@@ -170,58 +144,14 @@ function DetalhesMovimentoScreen({
           />
 
           <Text style={styles.label}>Categoria</Text>
-
-          {/* chips com categorias existentes */}
-          <FlatList
-            data={categories}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(i) => i}
-            contentContainerStyle={{ paddingVertical: 8 }}
-            renderItem={({ item }) => {
-              const selected = item === category;
-              return (
-                <TouchableOpacity
-                  onPress={() => handleSelectCategory(item)}
-                  style={[styles.chip, selected && styles.chipActive]}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[styles.chipText, selected && styles.chipTextActive]}
-                  >
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              );
-            }}
+          <TextInput
+            style={styles.input}
+            value={category}
+            onChangeText={setCategory}
+            placeholder="Ex.: Supermercado, Renda, Ginásio..."
+            placeholderTextColor="#6B7280"
           />
 
-          {/* adicionar nova categoria */}
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 8,
-              marginTop: 8,
-              alignItems: "center",
-            }}
-          >
-            <TextInput
-              placeholder="Adicionar categoria"
-              placeholderTextColor="#6B7280"
-              value={newCategory}
-              onChangeText={setNewCategory}
-              style={[styles.input, { flex: 1 }]}
-            />
-            <TouchableOpacity
-              onPress={handleAddCategory}
-              style={styles.addCatBtn}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.addCatBtnText}>Adicionar</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Data exibida como tag + picker */}
           <Text style={[styles.label, { marginTop: 12 }]}>Data</Text>
           <View
             style={{
@@ -262,10 +192,10 @@ function DetalhesMovimentoScreen({
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={handleSave}
-            style={{ marginTop: 18 }}
+            style={{ marginTop: 20 }}
           >
             <LinearGradient
-              colors={["#10B981", "#3B82F6"]}
+              colors={["#22C55E", "#3B82F6"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.saveButton}
@@ -300,6 +230,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
+    backgroundColor: "rgba(15,23,42,0.9)",
   },
   headerTitle: {
     fontSize: 18,
@@ -311,7 +242,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.15)",
+    borderColor: "rgba(15,23,42,0.9)",
   },
   label: {
     fontSize: 12,
@@ -325,13 +256,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   input: {
-    marginTop: 2,
+    marginTop: 4,
     backgroundColor: "#020617",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(31,41,55,0.9)",
+    borderColor: "#1F2937",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     color: "#F9FAFB",
     fontSize: 15,
   },
@@ -339,45 +270,29 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 12,
     alignItems: "center",
+    shadowColor: "#22C55E",
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
   },
   saveButtonText: {
     fontSize: 15,
     fontWeight: "700",
     color: "#F9FAFB",
   },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(148,163,184,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.08)",
-    marginRight: 8,
-  },
-  chipActive: {
-    backgroundColor: "rgba(34,197,94,0.12)",
-    borderColor: "rgba(34,197,94,0.24)",
-  },
-  chipText: { color: "#94A3B8", fontWeight: "600" },
-  chipTextActive: { color: "#E6FFFA" },
-  addCatBtn: {
-    backgroundColor: "rgba(14,165,233,0.08)",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(14,165,233,0.12)",
-  },
-  addCatBtnText: { color: "#7DD3FC", fontWeight: "700" },
   dateTag: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "rgba(148,163,184,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.08)",
+    borderColor: "rgba(148,163,184,0.18)",
   },
-  dateTagText: { color: "#94A3B8", fontWeight: "600" },
+  dateTagText: {
+    color: "#E5E7EB",
+    fontWeight: "600",
+    fontSize: 13,
+  },
 });
 
 export default DetalhesMovimentoScreen;

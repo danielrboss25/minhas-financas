@@ -21,6 +21,7 @@ import {
   NotebookPen,
 } from "lucide-react-native";
 import { MotiView } from "moti";
+import { useNavigation } from "@react-navigation/native";
 
 import { execSql } from "../db";
 
@@ -61,6 +62,8 @@ const DEFAULT_IDEAS: Idea[] = [
 ];
 
 export default function IdeasScreen() {
+  const navigation = useNavigation<any>();
+
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -85,7 +88,7 @@ export default function IdeasScreen() {
   }
 
   async function ensureTableExists() {
-    if (Platform.OS === "web") return; // web fica só em memória
+    if (Platform.OS === "web") return;
 
     await execSql(
       `
@@ -103,7 +106,6 @@ export default function IdeasScreen() {
 
   async function loadIdeasFromDb() {
     if (Platform.OS === "web") {
-      // fallback: usa defaults em memória
       setIdeas(DEFAULT_IDEAS);
       setLoading(false);
       return;
@@ -117,7 +119,6 @@ export default function IdeasScreen() {
       );
       let rows = res.rows._array;
 
-      // se a tabela estiver vazia, semeia com as default
       if (!rows || rows.length === 0) {
         for (const idea of DEFAULT_IDEAS) {
           await execSql(
@@ -144,7 +145,6 @@ export default function IdeasScreen() {
       setIdeas(mapped);
     } catch (e) {
       console.error("Erro a carregar ideias de SQLite:", e);
-      // fallback duro se algo correr mal
       setIdeas(DEFAULT_IDEAS);
     } finally {
       setLoading(false);
@@ -210,14 +210,12 @@ export default function IdeasScreen() {
   }
 
   function togglePinned(id: string) {
-    // atualiza imediatamente no UI
     setIdeas((prev) =>
       prev.map((idea) =>
         idea.id === id ? { ...idea, pinned: !idea.pinned } : idea
       )
     );
 
-    // atualiza em SQLite em background
     if (Platform.OS !== "web") {
       const current = ideas.find((i) => i.id === id);
       if (!current) return;
@@ -342,33 +340,41 @@ export default function IdeasScreen() {
                 from={{ opacity: 0, translateY: 12 }}
                 animate={{ opacity: 1, translateY: 0 }}
                 transition={{ type: "timing", duration: 350 + index * 60 }}
-                style={styles.pinnedCard}
+                style={{ marginBottom: 10 }}
               >
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.ideaTitle} numberOfLines={1}>
-                    {idea.title}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => togglePinned(idea.id)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <PinOff color="#F97373" size={18} />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => navigation.navigate("IdeaDetail", { idea })}
+                  style={{ width: "100%" }}
+                >
+                  <View style={styles.pinnedCard}>
+                    <View style={styles.cardHeaderRow}>
+                      <Text style={styles.ideaTitle} numberOfLines={1}>
+                        {idea.title}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => togglePinned(idea.id)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <PinOff color="#F97373" size={18} />
+                      </TouchableOpacity>
+                    </View>
 
-                {idea.body ? (
-                  <Text style={styles.ideaBody} numberOfLines={3}>
-                    {idea.body}
-                  </Text>
-                ) : null}
+                    {idea.body ? (
+                      <Text style={styles.ideaBody} numberOfLines={3}>
+                        {idea.body}
+                      </Text>
+                    ) : null}
 
-                <View style={styles.tagRow}>
-                  <View style={styles.tagPill}>
-                    <TagIcon color="#38BDF8" size={13} />
-                    <Text style={styles.tagText}>{idea.tag}</Text>
+                    <View style={styles.tagRow}>
+                      <View style={styles.tagPill}>
+                        <TagIcon color="#38BDF8" size={13} />
+                        <Text style={styles.tagText}>{idea.tag}</Text>
+                      </View>
+                      <Text style={styles.dateText}>Guardada</Text>
+                    </View>
                   </View>
-                  <Text style={styles.dateText}>Guardada</Text>
-                </View>
+                </TouchableOpacity>
               </MotiView>
             ))}
           </View>
@@ -453,37 +459,52 @@ export default function IdeasScreen() {
                   key={idea.id}
                   from={{ opacity: 0, translateY: 8 }}
                   animate={{ opacity: 1, translateY: 0 }}
-                  transition={{ type: "timing", duration: 280 + index * 40 }}
-                  style={styles.card}
+                  transition={{
+                    type: "timing",
+                    duration: 280 + index * 40,
+                  }}
+                  style={{ marginBottom: 12 }}
                 >
-                  <View style={styles.cardHeaderRow}>
-                    <Text style={styles.ideaTitle} numberOfLines={1}>
-                      {idea.title}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => togglePinned(idea.id)}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    >
-                      <Pin
-                        color={idea.pinned ? "#22C55E" : "#64748B"}
-                        size={18}
-                      />
-                    </TouchableOpacity>
-                  </View>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => navigation.navigate("IdeaDetail", { idea })}
+                    style={{ width: "100%" }}
+                  >
+                    <View style={styles.card}>
+                      <View style={styles.cardHeaderRow}>
+                        <Text style={styles.ideaTitle} numberOfLines={1}>
+                          {idea.title}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => togglePinned(idea.id)}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Pin
+                            color={idea.pinned ? "#22C55E" : "#64748B"}
+                            size={18}
+                          />
+                        </TouchableOpacity>
+                      </View>
 
-                  {idea.body ? (
-                    <Text style={styles.ideaBody} numberOfLines={3}>
-                      {idea.body}
-                    </Text>
-                  ) : null}
+                      {idea.body ? (
+                        <Text style={styles.ideaBody} numberOfLines={3}>
+                          {idea.body}
+                        </Text>
+                      ) : null}
 
-                  <View style={styles.tagRow}>
-                    <View style={styles.tagPillSecondary}>
-                      <TagIcon color="#9CA3AF" size={12} />
-                      <Text style={styles.tagTextSecondary}>{idea.tag}</Text>
+                      <View style={styles.tagRow}>
+                        <View style={styles.tagPillSecondary}>
+                          <TagIcon color="#9CA3AF" size={12} />
+                          <Text style={styles.tagTextSecondary}>
+                            {idea.tag}
+                          </Text>
+                        </View>
+                        <Text style={styles.dateTextSecondary}>
+                          Nota rápida
+                        </Text>
+                      </View>
                     </View>
-                    <Text style={styles.dateTextSecondary}>Nota rápida</Text>
-                  </View>
+                  </TouchableOpacity>
                 </MotiView>
               ))
             )}
@@ -645,7 +666,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 2,
   },
-
   sectionHeaderColumn: {
     marginBottom: 8,
   },
@@ -659,14 +679,12 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     marginTop: 2,
   },
-
   pinnedCard: {
     backgroundColor: "rgba(15,23,42,1)",
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: "rgba(56,189,248,0.35)",
-    marginBottom: 10,
   },
   card: {
     backgroundColor: "rgba(15,23,42,0.96)",
@@ -674,7 +692,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: "rgba(30,64,175,0.45)",
-    marginBottom: 12,
   },
   cardHeaderRow: {
     flexDirection: "row",

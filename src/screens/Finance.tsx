@@ -1,5 +1,5 @@
-// src/screens/Finance.tsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { getStoredBudget, saveBudget } from "./db/budget";
 import {
   View,
   Text,
@@ -49,9 +49,25 @@ type FinanceScreenProps = {
 export default function FinanceScreen({ navigation }: FinanceScreenProps) {
   const { movimentos, deleteMovimento } = useMovimentos();
 
+  // orçamento actual
   const [budget, setBudget] = useState<number>(1000);
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
   const [budgetInput, setBudgetInput] = useState<string>(budget.toString());
+
+  // carregar orçamento gravado em SQLite ao abrir o ecrã
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await getStoredBudget();
+        if (stored !== null && Number.isFinite(stored)) {
+          setBudget(stored);
+          setBudgetInput(stored.toString());
+        }
+      } catch (error) {
+        console.warn("Erro ao carregar orçamento guardado:", error);
+      }
+    })();
+  }, []);
 
   const movements = movimentos.map((m) => ({
     id: m.id,
@@ -94,7 +110,6 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
     setPickerVisible(false);
   }
 
-  // movimentos do mês selecionado
   const filteredMovements = useMemo(() => {
     const month = currentMonth.getMonth() + 1;
     const year = currentMonth.getFullYear();
@@ -109,7 +124,6 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
     });
   }, [movements, currentMonth]);
 
-  // categorias existentes neste mês
   const categories = useMemo(() => {
     const set = new Set<string>();
     filteredMovements.forEach((m) => {
@@ -118,7 +132,6 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
     return ["Todas", ...Array.from(set)];
   }, [filteredMovements]);
 
-  // aplicar filtro de categoria à lista
   const movementsByCategory = useMemo(() => {
     if (selectedCategory === "Todas") return filteredMovements;
     return filteredMovements.filter((m) => m.category === selectedCategory);
@@ -176,12 +189,19 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
     setBudgetModalVisible(true);
   }
 
-  function confirmBudget() {
+  async function confirmBudget() {
     const normalized = budgetInput.replace(",", ".").trim();
     const value = Number(normalized);
+
     if (Number.isFinite(value) && value >= 0) {
-      setBudget(value);
+      try {
+        setBudget(value);
+        await saveBudget(value);
+      } catch (error) {
+        console.warn("Erro ao guardar orçamento em SQLite:", error);
+      }
     }
+
     setBudgetModalVisible(false);
   }
 
@@ -202,20 +222,6 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
               Painel perigoso para saber quanto podes estragar-te.
             </Text>
           </View>
-
-          <TouchableOpacity
-            onPress={openBudgetModal}
-            activeOpacity={0.9}
-            style={styles.budgetTag}
-          >
-            <Text style={styles.budgetTagLabel}>Orçamento</Text>
-            <Text style={styles.budgetTagValue}>
-              {budget.toLocaleString("pt-PT", {
-                style: "currency",
-                currency: "EUR",
-              })}
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* HERO / EQUILÍBRIO */}
@@ -225,13 +231,16 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
           end={{ x: 1, y: 1 }}
           style={styles.heroBorder}
         >
+          {/* heroCard: Tem 'position: relative' para o chip absoluto */}
           <View style={styles.heroCard}>
+            {/* heroRowTop */}
             <View style={styles.heroRowTop}>
+              {/* heroLeft (O contêiner de texto que é restringido) */}
               <View style={styles.heroLeft}>
                 <View style={styles.heroIconBadge}>
                   <Wallet color="#BBF7D0" size={22} />
                 </View>
-                <View>
+                <View style={styles.heroTextContent}>
                   <Text style={styles.heroLabel}>Equilíbrio financeiro</Text>
                   <Text style={styles.heroAmount}>
                     {saldoDisponivel.toLocaleString("pt-PT", {
@@ -245,17 +254,18 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
                 </View>
               </View>
 
+              {/* Orçamento como chip compacto (Posicionamento ABSOLUTO) */}
               <TouchableOpacity
-                style={styles.monthChip}
-                onPress={openPicker}
+                onPress={openBudgetModal}
                 activeOpacity={0.9}
+                style={styles.heroBudgetTag}
               >
-                <Text style={styles.monthChipLabel}>Período</Text>
-                <Text style={styles.monthChipValue}>
-                  {new Intl.DateTimeFormat("pt-PT", {
-                    month: "long",
-                    year: "numeric",
-                  }).format(currentMonth)}
+                <Text style={styles.heroBudgetLabel}>ORÇAMENTO</Text>
+                <Text style={styles.heroBudgetValue}>
+                  {budget.toLocaleString("pt-PT", {
+                    style: "currency",
+                    currency: "EUR",
+                  })}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -313,14 +323,18 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
           </View>
         </LinearGradient>
 
-        {/* NAVEGAÇÃO DE MÊS COM SETAS */}
+        {/* NAVEGAÇÃO DE MÊS */}
         <View style={styles.monthNavRow}>
           <TouchableOpacity style={styles.monthNavButton} onPress={prevMonth}>
             <ChevronLeft color="#CBD5E1" size={18} />
           </TouchableOpacity>
-          <Text style={styles.monthNavText}>
-            {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-          </Text>
+
+          <TouchableOpacity onPress={openPicker} activeOpacity={0.9}>
+            <Text style={styles.monthNavText}>
+              {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.monthNavButton} onPress={nextMonth}>
             <ChevronRight color="#CBD5E1" size={18} />
           </TouchableOpacity>
@@ -369,7 +383,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
           </ScrollView>
         </View>
 
-        {/* MOVIMENTOS RECENTES */}
+        {/* MOVIMENTOS */}
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionTitleRow}>
@@ -411,7 +425,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
                       )}
                     </View>
 
-                    <View style={{ flex: 1 }}>
+                    <View style={styles.heroTextContent}>
                       <Text
                         style={styles.movementDescription}
                         numberOfLines={1}
@@ -461,7 +475,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
           </View>
         </View>
 
-        {/* MAPA DE CATEGORIAS DINÂMICO */}
+        {/* MAPA DE CATEGORIAS */}
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Mapa de categorias</Text>
@@ -644,40 +658,40 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: "800", color: "#F9FAFB" },
   subtitle: { fontSize: 13, color: "#94A3B8", marginTop: 4, flex: 1 },
 
-  budgetTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(22,163,74,0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.7)",
-    alignItems: "flex-end",
-    marginLeft: 8,
-  },
-  budgetTagLabel: { fontSize: 10, color: "#BBF7D0" },
-  budgetTagValue: {
-    fontSize: 12,
-    color: "#DCFCE7",
-    fontWeight: "700",
-    marginTop: 2,
-  },
-
   heroBorder: {
     borderRadius: 22,
     padding: 1,
     marginBottom: 14,
   },
+  // CRÍTICO: heroCard precisa de position: 'relative' para o chip absoluto
   heroCard: {
     borderRadius: 21,
     backgroundColor: "#020617",
     padding: 16,
+    position: "relative",
   },
+
+  // heroRowTop: Revertido para alinhar ao início
   heroRowTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 14,
   },
-  heroLeft: { flexDirection: "row", gap: 10, flex: 1 },
+
+  // CRÍTICO: heroLeft com marginRight MUITO FORÇADO
+  heroLeft: {
+    flexDirection: "row",
+    gap: 10,
+    flex: 1,
+    // Garante que o texto termina 160px antes da margem direita do cartão.
+    // Isto evita que o valor grande colida com o chip ABSOLUTO.
+    marginRight: 160,
+  },
+
+  heroTextContent: {
+    flex: 1,
+  },
+
   heroIconBadge: {
     width: 40,
     height: 40,
@@ -697,24 +711,34 @@ const styles = StyleSheet.create({
   },
   heroHint: { fontSize: 11, color: "#9CA3AF", marginTop: 4 },
 
-  monthChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.96)",
+  // heroBudgetTag: RESTAURADO como ABSOLUTE
+  heroBudgetTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: "rgba(15,23,42,0.95)",
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.5)",
-    alignItems: "flex-start",
-    minWidth: 130,
-  },
-  monthChipLabel: { fontSize: 10, color: "#9CA3AF" },
-  monthChipValue: {
-    fontSize: 12,
-    color: "#E5E7EB",
-    fontWeight: "600",
-    textTransform: "capitalize",
+    borderColor: "#22C55E",
+    // VOLTA A SER ABSOLUTO:
+    position: "absolute",
+    top: 16, // Alinha com o padding superior do heroCard
+    right: 16, // Alinha com o padding direito do heroCard
+    zIndex: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
 
+  heroBudgetLabel: {
+    fontSize: 10,
+    color: "#A7F3D0",
+    textTransform: "uppercase",
+  },
+  heroBudgetValue: {
+    fontSize: 13,
+    color: "#BBF7D0",
+    fontWeight: "700",
+  },
   heroRowBottom: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -758,16 +782,11 @@ const styles = StyleSheet.create({
 
   section: { marginTop: 14, marginBottom: 10 },
   sectionHeaderRow: { marginBottom: 6 },
-  sectionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center" },
   sectionTitle: { fontSize: 16, fontWeight: "700", color: "#E5E7EB" },
   sectionSubtitle: { fontSize: 11, color: "#9CA3AF", marginTop: 2 },
 
-  categoryChipsRow: {
-    paddingVertical: 4,
-  },
+  categoryChipsRow: { paddingVertical: 4 },
   categoryChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -786,9 +805,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  categoryChipTextActive: {
-    color: "#E0F2FE",
-  },
+  categoryChipTextActive: { color: "#E0F2FE" },
 
   cardMovements: {
     backgroundColor: "rgba(15,23,42,0.96)",
@@ -819,12 +836,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  movementIconIncome: {
-    backgroundColor: "rgba(34,197,94,0.16)",
-  },
-  movementIconExpense: {
-    backgroundColor: "rgba(248,113,113,0.16)",
-  },
+  movementIconIncome: { backgroundColor: "rgba(34,197,94,0.16)" },
+  movementIconExpense: { backgroundColor: "rgba(248,113,113,0.16)" },
   movementDescription: {
     fontSize: 14,
     fontWeight: "600",
@@ -937,9 +950,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     margin: 2,
   },
-  modalMonthButtonActive: {
-    backgroundColor: "rgba(34,197,94,0.18)",
-  },
+  modalMonthButtonActive: { backgroundColor: "rgba(34,197,94,0.18)" },
   modalMonthText: {
     color: "#94A3B8",
     fontWeight: "600",

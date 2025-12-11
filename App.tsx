@@ -1,3 +1,4 @@
+// App.tsx
 import "react-native-gesture-handler";
 import React, { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
@@ -20,42 +21,59 @@ import {
   Home as HomeIcon,
 } from "lucide-react-native";
 
-import HomeScreen from "./src/screens/home";
-import FinanceScreen from "./src/screens/Finance";
-import TasksScreen from "./src/screens/tasks";
-import MealsScreen from "./src/screens/Meals";
-import IdeasScreen from "./src/screens/Ideas";
-import NovaMovimentacaoScreen from "./src/screens/NovaMovimentacao";
-import DetalhesMovimentoScreen from "./src/screens/DetalhesMovimento";
+// ATENÇÃO AOS CAMINHOS / CASE DOS FICHEIROS
+import HomeScreen from "./src/screens/home"; // home.tsx
+import FinanceScreen from "./src/screens/Finance"; // Finance.tsx
+import TasksScreen from "./src/screens/tasks"; // tasks.tsx
+import MealsScreen from "./src/screens/Meals"; // Meals.tsx
+import MealDetailScreen from "./src/screens/MealDetail"; // MealDetail.tsx
+import IdeasScreen from "./src/screens/Ideas"; // Ideas.tsx
+import IdeaDetailScreen from "./src/screens/IdeaDetail"; // IdeaDetail.tsx
+import NovaMovimentacaoScreen from "./src/screens/NovaMovimentacao"; // NovaMovimentacao.tsx
+import DetalhesMovimentoScreen from "./src/screens/DetalhesMovimento"; // DetalhesMovimento.tsx
+
 import { MovimentosProvider } from "./src/context/MovimentosContext";
 
-// --------- TIPOS DA NAVEGAÇÃO ---------
+// Tipos (se quiseres usar mais tarde em props, mantém)
 export type FinancasStackParamList = {
   FinancasMain: undefined;
   NovaMovimentacao: undefined;
   MovimentoDetalhe: { id: string };
 };
 
+export type MealsStackParamList = {
+  MealsMain: undefined;
+  RefeicaoDetalhe: { meal: any };
+};
+
+export type IdeasStackParamList = {
+  IdeasMain: undefined;
+  IdeaDetail: { idea: any };
+};
+
 export type RootTabParamList = {
   Home: undefined;
-  FinancasStack: undefined;
-  Tarefas: undefined;
+  Financas: undefined;
   Refeicoes: undefined;
+  Tarefas: undefined;
   Ideias: undefined;
 };
 
-const Tab = createBottomTabNavigator<RootTabParamList>();
-const FinancasStack = createNativeStackNavigator<FinancasStackParamList>();
+// Para calar o TypeScript chato com o 'id'
+const Tab = createBottomTabNavigator() as any;
+const FinancasStack = createNativeStackNavigator() as any;
+const MealsStack = createNativeStackNavigator() as any;
+const IdeasStack = createNativeStackNavigator() as any;
 
-// --------- STACK SÓ PARA A ABA FINANÇAS ---------
+// -------- STACK FINANÇAS --------
 function FinancasStackNavigator() {
   return (
     <FinancasStack.Navigator
+      initialRouteName="FinancasMain"
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: "#020617" }, // fundo escuro dentro do stack
+        contentStyle: { backgroundColor: "#020617" },
       }}
-      id={undefined} // satisfaz o tipo manhoso do navigator
     >
       <FinancasStack.Screen name="FinancasMain" component={FinanceScreen} />
       <FinancasStack.Screen
@@ -70,27 +88,58 @@ function FinancasStackNavigator() {
   );
 }
 
-// --------- TEMA ESCURO PARA O NAVIGATIONCONTAINER ---------
+// -------- STACK REFEIÇÕES --------
+function MealsStackNavigator() {
+  return (
+    <MealsStack.Navigator
+      initialRouteName="MealsMain"
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: "#020617" },
+      }}
+    >
+      <MealsStack.Screen name="MealsMain" component={MealsScreen} />
+      <MealsStack.Screen name="RefeicaoDetalhe" component={MealDetailScreen} />
+    </MealsStack.Navigator>
+  );
+}
+
+// -------- STACK IDEIAS --------
+function IdeasStackNavigator() {
+  return (
+    <IdeasStack.Navigator
+      initialRouteName="IdeasMain"
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: "#020617" },
+      }}
+    >
+      <IdeasStack.Screen name="IdeasMain" component={IdeasScreen} />
+      <IdeasStack.Screen name="IdeaDetail" component={IdeaDetailScreen} />
+    </IdeasStack.Navigator>
+  );
+}
+
+// -------- TEMA --------
 const navTheme: Theme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: "#020617", // fundo da app inteira
-    card: "#020617", // fundo das “cards” de navegação (tabs, headers, etc.)
+    background: "#020617",
+    card: "#020617",
     border: "#111827",
     primary: "#38BDF8",
     text: "#F9FAFB",
   },
 };
 
-// --------- APP ---------
+// -------- ROOT APP --------
 export default function App() {
   useEffect(() => {
-    // cor da barra de navegação (a tal barra branca)
     NavigationBar.setBackgroundColorAsync("#020617");
-    // ícones claros
     NavigationBar.setButtonStyleAsync("light");
   }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#020617" }}>
       <SafeAreaProvider>
@@ -98,6 +147,7 @@ export default function App() {
         <NavigationContainer theme={navTheme}>
           <MovimentosProvider>
             <Tab.Navigator
+              initialRouteName="Home"
               screenOptions={{
                 headerShown: false,
                 tabBarActiveTintColor: "#E5E7EB",
@@ -113,7 +163,6 @@ export default function App() {
                   fontWeight: "600",
                 },
               }}
-              id={undefined} // idem: cala o TS e em runtime é irrelevante
             >
               <Tab.Screen
                 name="Home"
@@ -127,7 +176,7 @@ export default function App() {
               />
 
               <Tab.Screen
-                name="FinancasStack"
+                name="Financas"
                 component={FinancasStackNavigator}
                 options={{
                   title: "Finanças",
@@ -147,7 +196,7 @@ export default function App() {
 
               <Tab.Screen
                 name="Refeicoes"
-                component={MealsScreen}
+                component={MealsStackNavigator}
                 options={{
                   title: "Refeições",
                   tabBarIcon: ({ color }) => (
@@ -158,7 +207,7 @@ export default function App() {
 
               <Tab.Screen
                 name="Ideias"
-                component={IdeasScreen}
+                component={IdeasStackNavigator}
                 options={{
                   tabBarIcon: ({ color }) => (
                     <Lightbulb color={color} size={20} />
