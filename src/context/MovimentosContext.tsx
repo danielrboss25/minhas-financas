@@ -1,16 +1,23 @@
 // src/context/MovimentosContext.tsx
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { execSql } from "../db";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
 
+import { useAuth } from "./AuthContext";
+import { FirestoreMovimentosRepo } from "../data/movimentos.firestore";
+import { SQLiteMovimentosRepo } from "../data/movimentos.cache";
+import { dateStringToEpochMs, normalizeAmount } from "../utils/movimentos";
+
+// ✅ Modelo único e consistente (UI + SQLite + Firestore)
 export type Movimento = {
   id: string;
   type: "income" | "expense";
   description: string;
   title?: string;
   category: string;
-  date: string;
+  date: string;        // dd/MM/yyyy
+  dateTs: number;      // epoch ms (ordenação)
   amount: number;
-  created_at?: string;
+  created_at: string;  // ISO
 };
 
 export type NewMovimento = {
@@ -30,148 +37,174 @@ type MovimentosContextProps = {
   loadMovimentos: () => Promise<void>;
 };
 
-const MovimentosContext = createContext<MovimentosContextProps | undefined>(
-  undefined
-);
+const MovimentosContext = createContext<MovimentosContextProps | undefined>(undefined);
 
-export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const MovimentosProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading: authLoading } = useAuth();
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
 
-  useEffect(() => {
-    loadMovimentos();
-  }, []);
+  const isWeb = Platform.OS === "web";
+  const useCacheOnMobile = !isWeb;
 
+  const remoteRepo = FirestoreMovimentosRepo;
+
+  // 1) Load inicial (cache no mobile, Firestore no web)
   async function loadMovimentos() {
+    if (!user?.uid) {
+      setMovimentos([]);
+      return;
+    }
+
     try {
-      // o teu db.ts devolve { rows: { _array } } para SELECT
-      const res: any = await execSql(
-        "SELECT * FROM movimentos ORDER BY date DESC, created_at DESC",
-        []
-      );
-
-      const rows: any[] = Array.isArray(res) ? res : res?.rows?._array ?? [];
-
-      const mapped: Movimento[] = rows.map((r: any) => ({
-        id: String(r.id),
-        type: r.type === "income" ? "income" : "expense",
-        description: r.description ?? "",
-        title: r.title ?? r.description ?? "",
-        category: r.category ?? "Sem categoria",
-        date: r.date ?? "",
-        amount: typeof r.amount === "number" ? r.amount : Number(r.amount) || 0,
-        created_at: r.created_at ?? undefined,
-      }));
-
-      setMovimentos(mapped);
+      if (useCacheOnMobile) {
+        const local = await SQLiteMovimentosRepo.getAll(user.uid);
+        setMovimentos(local);
+      } else {
+        const remote = await remoteRepo.getAll(user.uid);
+        setMovimentos(remote);
+      }
     } catch (err) {
-      console.error("Erro ao carregar movimentos", err);
+      console.error("Erro ao carregar movimentos:", err);
+      setMovimentos([]);
     }
   }
 
+  // 2) Realtime sync (Firestore como fonte de verdade)
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user?.uid) {
+      setMovimentos([]);
+      return;
+    }
+
+    const unsubscribe = remoteRepo.listen(
+      user.uid,
+      async (remoteList: Movimento[]) => {
+        setMovimentos(remoteList);
+
+        if (useCacheOnMobile) {
+          try {
+            await SQLiteMovimentosRepo.syncFromRemote(user.uid, remoteList);
+          } catch (e) {
+            console.error("Erro ao sincronizar cache local:", e);
+          }
+        }
+      },
+      (err: unknown) => console.error("Erro Firestore movimentos:", err)
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid, authLoading, useCacheOnMobile]);
+
+  // 3) CRUD
+
   async function addMovimento(m: NewMovimento) {
-    const id = Date.now().toString();
-    const created_at = new Date().toISOString();
+    if (!user?.uid) return;
 
-    const amountNum =
-      typeof m.amount === "number"
-        ? m.amount
-        : Number(String(m.amount).replace(",", "."));
-
-    const novo: Movimento = {
-      id,
-      created_at,
-      title: m.title ?? m.description,
+    const mov: Movimento = {
+      id: Date.now().toString(),
       type: m.type,
-      description: m.description,
-      category: m.category ?? "Sem categoria",
+      description: m.description.trim(),
+      title: (m.title ?? m.description).trim(),
+      category: (m.category?.trim() || "Sem categoria"),
       date: m.date,
-      amount: Number.isNaN(amountNum) ? 0 : amountNum,
+      dateTs: dateStringToEpochMs(m.date),
+      amount: normalizeAmount(m.amount),
+      created_at: new Date().toISOString(),
     };
 
-    try {
-      await execSql(
-        `INSERT INTO movimentos (id, type, description, title, category, date, amount, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          novo.id,
-          novo.type,
-          novo.description,
-          novo.title ?? null,
-          novo.category,
-          novo.date,
-          novo.amount,
-          novo.created_at,
-        ]
-      );
+    // Optimistic UI
+    setMovimentos((prev) => [mov, ...prev]);
 
-      // só atualizamos o state se o INSERT não rebentar
-      setMovimentos((prev) => [novo, ...prev]);
-    } catch (err) {
-      console.error("Erro ao adicionar movimento", err);
+    // cache local (mobile)
+    if (useCacheOnMobile) {
+      try {
+        await SQLiteMovimentosRepo.insert(user.uid, mov);
+      } catch (e) {
+        console.error("Erro a inserir no cache local:", e);
+      }
+    }
+
+    // Firestore (fonte de verdade)
+    try {
+      await remoteRepo.insertWithId(user.uid, mov.id, mov);
+    } catch (e) {
+      console.error("Erro a inserir no Firestore:", e);
+
+      // rollback simples
+      setMovimentos((prev) => prev.filter((x) => x.id !== mov.id));
+      if (useCacheOnMobile) {
+        try {
+          await SQLiteMovimentosRepo.remove(user.uid, mov.id);
+        } catch {}
+      }
     }
   }
 
   async function updateMovimento(id: string, fields: Partial<Movimento>) {
-    const keys = Object.keys(fields).filter(
-      (k) => k !== "id" && k !== "created_at"
-    );
-    if (keys.length === 0) return;
+    if (!user?.uid) return;
 
-    const setSql = keys.map((k) => `${k} = ?`).join(", ");
-    const params = keys.map((k) => (fields as any)[k]);
-    params.push(id);
+    // Se mudarem a date, alinha também o dateTs
+    const patched: Partial<Movimento> = { ...fields };
+    if (typeof patched.date === "string") {
+      patched.dateTs = dateStringToEpochMs(patched.date);
+    }
+
+    // Optimistic UI
+    setMovimentos((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...patched } : m))
+    );
+
+    if (useCacheOnMobile) {
+      try {
+        await SQLiteMovimentosRepo.update(user.uid, id, patched);
+      } catch (e) {
+        console.error("Erro a actualizar cache local:", e);
+      }
+    }
 
     try {
-      await execSql(`UPDATE movimentos SET ${setSql} WHERE id = ?`, params);
-
-      setMovimentos((prev) =>
-        prev.map((mv) =>
-          mv.id === id
-            ? {
-                ...mv,
-                ...fields,
-                title: fields.title ?? fields.description ?? mv.title,
-              }
-            : mv
-        )
-      );
-    } catch (err) {
-      console.error("Erro ao atualizar movimento", err);
+      await remoteRepo.update(user.uid, id, patched);
+    } catch (e) {
+      console.error("Erro a actualizar no Firestore:", e);
+      // o listener tende a corrigir o estado depois
     }
   }
 
   async function deleteMovimento(id: string) {
+    if (!user?.uid) return;
+
+    // Optimistic UI
+    setMovimentos((prev) => prev.filter((m) => m.id !== id));
+
+    if (useCacheOnMobile) {
+      try {
+        await SQLiteMovimentosRepo.remove(user.uid, id);
+      } catch (e) {
+        console.error("Erro a apagar do cache local:", e);
+      }
+    }
+
     try {
-      await execSql("DELETE FROM movimentos WHERE id = ?", [id]);
-      setMovimentos((prev) => prev.filter((m) => m.id !== id));
-    } catch (err) {
-      console.error("Erro ao excluir movimento", err);
+      await remoteRepo.remove(user.uid, id);
+    } catch (e) {
+      console.error("Erro a apagar no Firestore:", e);
     }
   }
 
-  return (
-    <MovimentosContext.Provider
-      value={{
-        movimentos,
-        addMovimento,
-        updateMovimento,
-        deleteMovimento,
-        loadMovimentos,
-      }}
-    >
-      {children}
-    </MovimentosContext.Provider>
+  const value = useMemo(
+    () => ({ movimentos, addMovimento, updateMovimento, deleteMovimento, loadMovimentos }),
+    [movimentos]
   );
+
+  return <MovimentosContext.Provider value={value}>{children}</MovimentosContext.Provider>;
 };
 
 export function useMovimentos() {
   const ctx = useContext(MovimentosContext);
   if (!ctx) {
-    throw new Error("useMovimentos must be used within MovimentosProvider");
+    throw new Error("useMovimentos tem de ser usado dentro de MovimentosProvider.");
   }
   return ctx;
 }
-
-export { MovimentosContext };

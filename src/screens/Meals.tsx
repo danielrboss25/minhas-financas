@@ -1,5 +1,5 @@
 // src/screens/Meals.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,19 +12,10 @@ import {
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import {
-  Utensils,
-  CalendarDays,
-  Plus,
-  Flame,
-  Soup,
-  Sandwich,
-} from "lucide-react-native";
+import { Utensils, CalendarDays, Plus, Flame, Soup, Sandwich } from "lucide-react-native";
 import { MotiView } from "moti";
 
-import { execSql } from "../db";
-
-type MealType = "Pequeno-almoço" | "Almoço" | "Jantar" | "Snack";
+import { useMeals, MealType } from "../context/MealsContext";
 
 type Meal = {
   id: string;
@@ -34,59 +25,20 @@ type Meal = {
   notes?: string;
   calories?: number;
   tag?: string;
-  createdAt: Date;
+  createdAt?: Date | string;
 };
 
-type MealsScreenProps = {
-  navigation: any;
-};
+const DAYS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
 
-const DAYS = [
-  "Segunda",
-  "Terça",
-  "Quarta",
-  "Quinta",
-  "Sexta",
-  "Sábado",
-  "Domingo",
-];
+function parseOptionalNumber(input: string): number | undefined {
+  const s = (input ?? "").trim();
+  if (!s) return undefined;
+  const n = Number(s.replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
 
-const DEFAULT_MEALS: Meal[] = [
-  {
-    id: "1",
-    day: "Segunda",
-    type: "Almoço",
-    title: "Frango grelhado com arroz e brócolos",
-    notes: "Boa para pós-treino. Preparar logo em dose dupla.",
-    calories: 650,
-    tag: "Saudável",
-    createdAt: new Date(),
-  },
-  {
-    id: "2",
-    day: "Segunda",
-    type: "Jantar",
-    title: "Omelete de 3 ovos com espinafres",
-    notes: "Adicionar queijo se estiver motivado.",
-    calories: 520,
-    tag: "Proteína",
-    createdAt: new Date(),
-  },
-  {
-    id: "3",
-    day: "Quarta",
-    type: "Pequeno-almoço",
-    title: "Iogurte natural com fruta e frutos secos",
-    notes: "Misturar banana + frutos vermelhos.",
-    calories: 430,
-    tag: "Rápido",
-    createdAt: new Date(),
-  },
-];
-
-export default function MealsScreen({ navigation }: MealsScreenProps) {
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function MealsScreen({ navigation }: { navigation: any }) {
+  const { meals, loading, addMeal } = useMeals();
 
   const [selectedDay, setSelectedDay] = useState<string>(DAYS[0]);
 
@@ -97,99 +49,6 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
   const [notes, setNotes] = useState("");
   const [tag, setTag] = useState("");
   const [calories, setCalories] = useState("");
-
-  // ---------- HELPERS SQLITE ----------
-
-  function mapRowToMeal(row: any): Meal {
-    return {
-      id: String(row.id),
-      day: row.day ?? "",
-      type: row.type as MealType,
-      title: row.title ?? "",
-      notes: row.notes ?? undefined,
-      tag: row.tag ?? undefined,
-      calories:
-        typeof row.calories === "number"
-          ? row.calories
-          : row.calories != null
-          ? Number(row.calories)
-          : undefined,
-      createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    };
-  }
-
-  async function ensureTableExists() {
-    if (Platform.OS === "web") return;
-
-    await execSql(`
-      CREATE TABLE IF NOT EXISTS meals (
-        id TEXT PRIMARY KEY NOT NULL,
-        day TEXT NOT NULL,
-        type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        notes TEXT,
-        calories REAL,
-        tag TEXT,
-        created_at TEXT
-      );
-    `);
-  }
-
-  async function loadMealsFromDb() {
-    if (Platform.OS === "web") {
-      setMeals(DEFAULT_MEALS);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      await ensureTableExists();
-
-      const res = await execSql<{ rows: { _array: any[] } }>(
-        "SELECT * FROM meals ORDER BY datetime(created_at) DESC;"
-      );
-      let rows = res.rows._array;
-
-      if (!rows || rows.length === 0) {
-        for (const meal of DEFAULT_MEALS) {
-          await execSql(
-            `INSERT OR REPLACE INTO meals
-             (id, day, type, title, notes, calories, tag, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-            [
-              meal.id,
-              meal.day,
-              meal.type,
-              meal.title,
-              meal.notes ?? null,
-              meal.calories ?? null,
-              meal.tag ?? null,
-              meal.createdAt.toISOString(),
-            ]
-          );
-        }
-
-        const res2 = await execSql<{ rows: { _array: any[] } }>(
-          "SELECT * FROM meals ORDER BY datetime(created_at) DESC;"
-        );
-        rows = res2.rows._array;
-      }
-
-      const mapped = rows.map(mapRowToMeal);
-      setMeals(mapped);
-    } catch (e) {
-      console.error("Erro a carregar refeições de SQLite:", e);
-      setMeals(DEFAULT_MEALS);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadMealsFromDb();
-  }, []);
-
-  // ---------- FORM ----------
 
   function resetForm() {
     setNewDay(selectedDay);
@@ -209,63 +68,33 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
     setModalVisible(false);
   }
 
-  async function addMeal() {
+ async function onAddMeal() {
     if (!title.trim()) return;
 
-    const kcal = Number(calories.replace(",", "."));
-    const now = new Date();
+    try {
+      await addMeal({
+        day: newDay,
+        type: newType,
+        title: title.trim(),
+        notes: notes.trim() || undefined,
+        tag: tag.trim() || undefined,
+        calories: parseOptionalNumber(calories), // number | undefined (como o teu NewMeal aceita)
+      });
 
-    const newMeal: Meal = {
-      id: Date.now().toString(),
-      day: newDay,
-      type: newType,
-      title: title.trim(),
-      notes: notes.trim() || undefined,
-      tag: tag.trim() || undefined,
-      calories: Number.isFinite(kcal) ? kcal : undefined,
-      createdAt: now,
-    };
-
-    setMeals((prev) => [newMeal, ...prev]);
-
-    if (Platform.OS !== "web") {
-      try {
-        await execSql(
-          `INSERT OR REPLACE INTO meals
-           (id, day, type, title, notes, calories, tag, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-          [
-            newMeal.id,
-            newMeal.day,
-            newMeal.type,
-            newMeal.title,
-            newMeal.notes ?? null,
-            newMeal.calories ?? null,
-            newMeal.tag ?? null,
-            now.toISOString(),
-          ]
-        );
-      } catch (e) {
-        console.error("Erro a guardar refeição em SQLite:", e);
-      }
+      closeModal();
+    } catch (e) {
+      console.error("Erro ao adicionar refeição:", e);
     }
-
-    closeModal();
   }
-
-  // ---------- DERIVADOS ----------
 
   const stats = useMemo(() => {
     const total = meals.length;
     const weekDaysPlanned = new Set(meals.map((m) => m.day)).size;
-    const recipes = new Set(meals.map((m) => m.title.trim())).size;
+    const recipes = new Set(meals.map((m) => (m.title ?? "").trim())).size;
     return { total, weekDaysPlanned, recipes };
   }, [meals]);
 
-  const mealsForDay = useMemo(
-    () => meals.filter((m) => m.day === selectedDay),
-    [meals, selectedDay]
-  );
+  const mealsForDay = useMemo(() => meals.filter((m) => m.day === selectedDay), [meals, selectedDay]);
 
   const groupedByType = useMemo(() => {
     const map: Record<MealType, Meal[]> = {
@@ -279,8 +108,6 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
     });
     return map;
   }, [mealsForDay]);
-
-  // ---------- UI ----------
 
   return (
     <View style={styles.root}>
@@ -297,8 +124,7 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Refeições & Planeamento</Text>
             <Text style={styles.headerSubtitle}>
-              Organiza a semana para não viver à base de fast-food e
-              arrependimento.
+              Organiza a semana para não viver à base de fast-food e arrependimento.
             </Text>
           </View>
         </View>
@@ -306,21 +132,15 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Refeições planeadas</Text>
-            <Text style={[styles.statValue, { color: "#22C55E" }]}>
-              {stats.total}
-            </Text>
+            <Text style={[styles.statValue, { color: "#22C55E" }]}>{stats.total}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Dias com plano</Text>
-            <Text style={[styles.statValue, { color: "#38BDF8" }]}>
-              {stats.weekDaysPlanned}
-            </Text>
+            <Text style={[styles.statValue, { color: "#38BDF8" }]}>{stats.weekDaysPlanned}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Receitas diferentes</Text>
-            <Text style={[styles.statValue, { color: "#FBBF24" }]}>
-              {stats.recipes}
-            </Text>
+            <Text style={[styles.statValue, { color: "#FBBF24" }]}>{stats.recipes}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -331,9 +151,7 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
         showsVerticalScrollIndicator={false}
       >
         {loading && (
-          <Text style={[styles.emptyText, { marginTop: 20 }]}>
-            A carregar refeições…
-          </Text>
+          <Text style={[styles.emptyText, { marginTop: 20 }]}>A carregar refeições…</Text>
         )}
 
         {!loading && (
@@ -341,23 +159,13 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
                 <Text style={styles.sectionTitle}>Plano semanal</Text>
-                <CalendarDays
-                  color="#9CA3AF"
-                  size={16}
-                  style={{ marginLeft: 8 }}
-                />
+                <CalendarDays color="#9CA3AF" size={16} style={{ marginLeft: 8 }} />
               </View>
 
-              <Text style={styles.sectionSubtitle}>
-                Escolhe o dia para ver as refeições.
-              </Text>
+              <Text style={styles.sectionSubtitle}>Escolhe o dia para ver as refeições.</Text>
             </View>
 
-            <ScrollView
-              horizontal
-              contentContainerStyle={{ paddingVertical: 6 }}
-              showsHorizontalScrollIndicator={false}
-            >
+            <ScrollView horizontal contentContainerStyle={{ paddingVertical: 6 }} showsHorizontalScrollIndicator={false}>
               {DAYS.map((day) => {
                 const selected = selectedDay === day;
                 const hasMeals = meals.some((m) => m.day === day);
@@ -372,12 +180,7 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
                     ]}
                     onPress={() => setSelectedDay(day)}
                   >
-                    <Text
-                      style={[
-                        styles.dayChipText,
-                        selected && styles.dayChipTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.dayChipText, selected && styles.dayChipTextActive]}>
                       {day.substring(0, 3)}
                     </Text>
                   </TouchableOpacity>
@@ -389,37 +192,21 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
 
         {!loading && (
           <View style={{ marginTop: 14 }}>
-            {(
-              ["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]
-            ).map((type) => {
+            {(["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]).map((type) => {
               const list = groupedByType[type];
               if (list.length === 0) return null;
 
               return (
                 <View key={type} style={{ marginBottom: 14 }}>
                   <View style={styles.mealTypeHeaderRow}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      {type === "Pequeno-almoço" && (
-                        <Soup color="#FACC15" size={16} />
-                      )}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      {type === "Pequeno-almoço" && <Soup color="#FACC15" size={16} />}
                       {type === "Almoço" && <Flame color="#F97316" size={16} />}
-                      {type === "Jantar" && (
-                        <Utensils color="#60A5FA" size={16} />
-                      )}
-                      {type === "Snack" && (
-                        <Sandwich color="#A855F7" size={16} />
-                      )}
+                      {type === "Jantar" && <Utensils color="#60A5FA" size={16} />}
+                      {type === "Snack" && <Sandwich color="#A855F7" size={16} />}
                       <Text style={styles.mealTypeTitle}>{type}</Text>
                     </View>
-                    <Text style={styles.mealTypeSubtitle}>
-                      {list.length} refeição(ões)
-                    </Text>
+                    <Text style={styles.mealTypeSubtitle}>{list.length} refeição(ões)</Text>
                   </View>
 
                   {list.map((meal, index) => (
@@ -432,25 +219,21 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
                       <TouchableOpacity
                         activeOpacity={0.9}
                         onPress={() =>
-                          navigation.navigate("RefeicaoDetalhe", { meal })
+                          navigation.navigate("RefeicaoDetalhe", { id: meal.id })
                         }
                         style={{ width: "100%" }}
                       >
                         <View style={styles.mealCard}>
                           <Text style={styles.mealTitle}>{meal.title}</Text>
-                          {meal.notes ? (
-                            <Text style={styles.mealNotes}>{meal.notes}</Text>
-                          ) : null}
+                          {meal.notes ? <Text style={styles.mealNotes}>{meal.notes}</Text> : null}
                           <View style={styles.mealMetaRow}>
                             {meal.tag && (
                               <View style={styles.tagPill}>
                                 <Text style={styles.tagText}>{meal.tag}</Text>
                               </View>
                             )}
-                            {meal.calories != null && (
-                              <Text style={styles.caloriesText}>
-                                {meal.calories} kcal
-                              </Text>
+                            {typeof meal.calories === "number" && Number.isFinite(meal.calories) && (
+                              <Text style={styles.caloriesText}>{Math.round(meal.calories)} kcal</Text>
                             )}
                           </View>
                         </View>
@@ -463,8 +246,7 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
 
             {mealsForDay.length === 0 && (
               <Text style={styles.emptyText}>
-                Ainda não tens refeições planeadas para {selectedDay}. Adiciona
-                uma para deixares de improvisar.
+                Ainda não tens refeições planeadas para {selectedDay}. Adiciona uma para deixares de improvisar.
               </Text>
             )}
           </View>
@@ -491,8 +273,7 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
               <View>
                 <Text style={styles.modalTitle}>Nova refeição / receita</Text>
                 <Text style={styles.modalSubtitle}>
-                  Planeia o que vais comer em vez de decidir quando já estás com
-                  fome.
+                  Planeia o que vais comer em vez de decidir quando já estás com fome.
                 </Text>
               </View>
               <Pressable onPress={closeModal}>
@@ -502,29 +283,17 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
 
             <View style={{ marginBottom: 10 }}>
               <Text style={styles.modalLabel}>Dia da semana</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingVertical: 4 }}
-              >
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4 }}>
                 {DAYS.map((day) => {
                   const selected = newDay === day;
                   return (
                     <TouchableOpacity
                       key={day}
                       activeOpacity={0.85}
-                      style={[
-                        styles.dayChipSmall,
-                        selected && styles.dayChipSmallActive,
-                      ]}
+                      style={[styles.dayChipSmall, selected && styles.dayChipSmallActive]}
                       onPress={() => setNewDay(day)}
                     >
-                      <Text
-                        style={[
-                          styles.dayChipSmallText,
-                          selected && styles.dayChipSmallTextActive,
-                        ]}
-                      >
+                      <Text style={[styles.dayChipSmallText, selected && styles.dayChipSmallTextActive]}>
                         {day.substring(0, 3)}
                       </Text>
                     </TouchableOpacity>
@@ -536,26 +305,16 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
             <View style={{ marginBottom: 10 }}>
               <Text style={styles.modalLabel}>Tipo de refeição</Text>
               <View style={styles.mealTypeSelectorRow}>
-                {(
-                  ["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]
-                ).map((type) => {
+                {(["Pequeno-almoço", "Almoço", "Jantar", "Snack"] as MealType[]).map((type) => {
                   const selected = newType === type;
                   return (
                     <TouchableOpacity
                       key={type}
                       activeOpacity={0.85}
-                      style={[
-                        styles.mealTypeChip,
-                        selected && styles.mealTypeChipActive,
-                      ]}
+                      style={[styles.mealTypeChip, selected && styles.mealTypeChipActive]}
                       onPress={() => setNewType(type)}
                     >
-                      <Text
-                        style={[
-                          styles.mealTypeChipText,
-                          selected && styles.mealTypeChipTextActive,
-                        ]}
-                      >
+                      <Text style={[styles.mealTypeChipText, selected && styles.mealTypeChipTextActive]}>
                         {type}
                       </Text>
                     </TouchableOpacity>
@@ -616,20 +375,14 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
               <Pressable
                 style={[
                   styles.modalBtn,
-                  {
-                    backgroundColor: "transparent",
-                    borderWidth: 1,
-                    borderColor: "#334155",
-                  },
+                  { backgroundColor: "transparent", borderWidth: 1, borderColor: "#334155" },
                 ]}
                 onPress={closeModal}
               >
                 <Text style={styles.modalBtnTextSecondary}>Cancelar</Text>
               </Pressable>
-              <Pressable
-                style={[styles.modalBtn, { backgroundColor: "#22C55E" }]}
-                onPress={addMeal}
-              >
+
+              <Pressable style={[styles.modalBtn, { backgroundColor: "#22C55E" }]} onPress={onAddMeal}>
                 <Text style={styles.modalBtnText}>Guardar</Text>
               </Pressable>
             </View>
@@ -640,301 +393,62 @@ export default function MealsScreen({ navigation }: MealsScreenProps) {
   );
 }
 
+// Mantém os teus estilos exatamente como estavam:
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#020617",
-  },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 26,
-    paddingHorizontal: 22,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
-  },
-  headerRow: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
-  },
-  iconBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(248,113,113,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(248,113,113,0.4)",
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#F9FAFB",
-  },
-  headerSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: "#94A3B8",
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 14,
-  },
-  statBox: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(15,23,42,0.9)",
-    borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.2)",
-  },
-  statLabel: {
-    fontSize: 11,
-    color: "#9CA3AF",
-  },
-  statValue: {
-    fontSize: 17,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  sectionHeader: {
-    marginBottom: 6,
-  },
-  sectionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#E5E7EB",
-  },
-  sectionSubtitle: {
-    marginTop: 4,
-    fontSize: 11,
-    color: "#9CA3AF",
-  },
-  dayChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.95)",
-    borderWidth: 1,
-    borderColor: "rgba(55,65,81,0.9)",
-    marginRight: 8,
-  },
-  dayChipWithMeals: {
-    borderColor: "rgba(52,211,153,0.7)",
-  },
-  dayChipActive: {
-    backgroundColor: "rgba(56,189,248,0.18)",
-    borderColor: "rgba(56,189,248,1)",
-  },
-  dayChipText: {
-    color: "#9CA3AF",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  dayChipTextActive: {
-    color: "#E0F2FE",
-  },
-  mealTypeHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  mealTypeTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#E5E7EB",
-  },
-  mealTypeSubtitle: {
-    fontSize: 11,
-    color: "#9CA3AF",
-  },
-  mealCard: {
-    backgroundColor: "rgba(15,23,42,0.98)",
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(30,64,175,0.6)",
-    marginBottom: 8,
-  },
-  mealTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#F9FAFB",
-  },
-  mealNotes: {
-    fontSize: 12,
-    color: "#CBD5E1",
-    marginTop: 4,
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  mealMetaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  tagPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.9)",
-    borderWidth: 1,
-    borderColor: "rgba(75,85,99,0.8)",
-  },
-  tagText: {
-    fontSize: 11,
-    color: "#E5E7EB",
-    fontWeight: "600",
-  },
-  caloriesText: {
-    fontSize: 11,
-    color: "#F59E0B",
-    fontWeight: "600",
-  },
-  emptyText: {
-    color: "#6B7280",
-    textAlign: "center",
-    marginTop: 24,
-    fontSize: 13,
-  },
-  fabWrapper: {
-    position: "absolute",
-    right: 20,
-    bottom: 20,
-  },
-  fab: {
-    height: 64,
-    width: 64,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#22C55E",
-    shadowRadius: 14,
-    shadowOpacity: 0.45,
-    shadowOffset: { width: 0, height: 6 },
-    borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.18)",
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    backgroundColor: "rgba(2,6,23,0.78)",
-    paddingHorizontal: 18,
-  },
-  modalCard: {
-    backgroundColor: "#020617",
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(30,64,175,0.7)",
-  },
-  modalHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-    gap: 12,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#E5E7EB",
-  },
-  modalSubtitle: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    marginTop: 4,
-  },
-  modalCloseText: {
-    fontSize: 12,
-    color: "#9CA3AF",
-  },
-  modalLabel: {
-    fontSize: 12,
-    color: "#CBD5E1",
-    marginBottom: 4,
-  },
-  modalInput: {
-    backgroundColor: "#0F172A",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "rgba(51,65,85,0.9)",
-    fontSize: 14,
-    color: "#F9FAFB",
-  },
-  dayChipSmall: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.95)",
-    borderWidth: 1,
-    borderColor: "rgba(55,65,81,0.9)",
-    marginRight: 8,
-  },
-  dayChipSmallActive: {
-    backgroundColor: "rgba(56,189,248,0.22)",
-    borderColor: "rgba(56,189,248,1)",
-  },
-  dayChipSmallText: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    fontWeight: "600",
-  },
-  dayChipSmallTextActive: {
-    color: "#E0F2FE",
-  },
-  mealTypeSelectorRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  mealTypeChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(15,23,42,0.96)",
-    borderWidth: 1,
-    borderColor: "rgba(55,65,81,0.9)",
-  },
-  mealTypeChipActive: {
-    backgroundColor: "rgba(34,197,94,0.18)",
-    borderColor: "rgba(34,197,94,0.95)",
-  },
-  mealTypeChipText: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    fontWeight: "600",
-  },
-  mealTypeChipTextActive: {
-    color: "#ECFDF5",
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 10,
-  },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  modalBtnText: {
-    color: "#022C22",
-    fontWeight: "700",
-  },
-  modalBtnTextSecondary: {
-    color: "#E5E7EB",
-    fontWeight: "600",
-  },
+  // ... (cola aqui os teus styles tal como estão; não mexi em nada)
+  // Para não te entupir a resposta, não dupliquei 200 linhas de estilos.
+  // Se quiseres, posso devolver o ficheiro inteiro com styles incluídos.
+  root: { flex: 1, backgroundColor: "#020617" },
+  header: { paddingTop: 60, paddingBottom: 26, paddingHorizontal: 22, borderBottomLeftRadius: 22, borderBottomRightRadius: 22 },
+  headerRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  iconBadge: { width: 40, height: 40, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(248,113,113,0.08)", borderWidth: 1, borderColor: "rgba(248,113,113,0.4)" },
+  headerTitle: { fontSize: 22, fontWeight: "800", color: "#F9FAFB" },
+  headerSubtitle: { marginTop: 4, fontSize: 13, color: "#94A3B8" },
+  statsRow: { flexDirection: "row", gap: 12, marginTop: 14 },
+  statBox: { flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 14, backgroundColor: "rgba(15,23,42,0.9)", borderWidth: 1, borderColor: "rgba(148,163,184,0.2)" },
+  statLabel: { fontSize: 11, color: "#9CA3AF" },
+  statValue: { fontSize: 17, fontWeight: "700", marginTop: 2 },
+  sectionHeader: { marginBottom: 6 },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center" },
+  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#E5E7EB" },
+  sectionSubtitle: { marginTop: 4, fontSize: 11, color: "#9CA3AF" },
+  dayChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(15,23,42,0.95)", borderWidth: 1, borderColor: "rgba(55,65,81,0.9)", marginRight: 8 },
+  dayChipWithMeals: { borderColor: "rgba(52,211,153,0.7)" },
+  dayChipActive: { backgroundColor: "rgba(56,189,248,0.18)", borderColor: "rgba(56,189,248,1)" },
+  dayChipText: { color: "#9CA3AF", fontSize: 12, fontWeight: "600" },
+  dayChipTextActive: { color: "#E0F2FE" },
+  mealTypeHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  mealTypeTitle: { fontSize: 15, fontWeight: "700", color: "#E5E7EB" },
+  mealTypeSubtitle: { fontSize: 11, color: "#9CA3AF" },
+  mealCard: { backgroundColor: "rgba(15,23,42,0.98)", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "rgba(30,64,175,0.6)", marginBottom: 8 },
+  mealTitle: { fontSize: 14, fontWeight: "700", color: "#F9FAFB" },
+  mealNotes: { fontSize: 12, color: "#CBD5E1", marginTop: 4, marginBottom: 6, lineHeight: 18 },
+  mealMetaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  tagPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(15,23,42,0.9)", borderWidth: 1, borderColor: "rgba(75,85,99,0.8)" },
+  tagText: { fontSize: 11, color: "#E5E7EB", fontWeight: "600" },
+  caloriesText: { fontSize: 11, color: "#F59E0B", fontWeight: "600" },
+  emptyText: { color: "#6B7280", textAlign: "center", marginTop: 24, fontSize: 13 },
+  fabWrapper: { position: "absolute", right: 20, bottom: 20 },
+  fab: { height: 64, width: 64, borderRadius: 999, alignItems: "center", justifyContent: "center", shadowColor: "#22C55E", shadowRadius: 14, shadowOpacity: 0.45, shadowOffset: { width: 0, height: 6 }, borderWidth: 1, borderColor: "rgba(148,163,184,0.18)" },
+  modalOverlay: { flex: 1, justifyContent: "center", backgroundColor: "rgba(2,6,23,0.78)", paddingHorizontal: 18 },
+  modalCard: { backgroundColor: "#020617", borderRadius: 20, padding: 16, borderWidth: 1, borderColor: "rgba(30,64,175,0.7)" },
+  modalHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 },
+  modalTitle: { fontSize: 16, fontWeight: "700", color: "#E5E7EB" },
+  modalSubtitle: { fontSize: 11, color: "#9CA3AF", marginTop: 4 },
+  modalCloseText: { fontSize: 12, color: "#9CA3AF" },
+  modalLabel: { fontSize: 12, color: "#CBD5E1", marginBottom: 4 },
+  modalInput: { backgroundColor: "#0F172A", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: "rgba(51,65,85,0.9)", fontSize: 14, color: "#F9FAFB" },
+  dayChipSmall: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(15,23,42,0.95)", borderWidth: 1, borderColor: "rgba(55,65,81,0.9)", marginRight: 8 },
+  dayChipSmallActive: { backgroundColor: "rgba(56,189,248,0.22)", borderColor: "rgba(56,189,248,1)" },
+  dayChipSmallText: { fontSize: 11, color: "#9CA3AF", fontWeight: "600" },
+  dayChipSmallTextActive: { color: "#E0F2FE" },
+  mealTypeSelectorRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  mealTypeChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(15,23,42,0.96)", borderWidth: 1, borderColor: "rgba(55,65,81,0.9)" },
+  mealTypeChipActive: { backgroundColor: "rgba(34,197,94,0.18)", borderColor: "rgba(34,197,94,0.95)" },
+  mealTypeChipText: { fontSize: 12, color: "#9CA3AF", fontWeight: "600" },
+  mealTypeChipTextActive: { color: "#ECFDF5" },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 10 },
+  modalBtn: { flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: "center" },
+  modalBtnText: { color: "#022C22", fontWeight: "700" },
+  modalBtnTextSecondary: { color: "#E5E7EB", fontWeight: "600" },
 });

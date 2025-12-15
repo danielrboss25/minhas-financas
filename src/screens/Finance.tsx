@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { getStoredBudget, saveBudget } from "./db/budget";
+import { monthKey } from "../utils";
+import { getBudget, setBudget } from "../services/budget";
 import {
   View,
   Text,
@@ -50,24 +51,31 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
   const { movimentos, deleteMovimento } = useMovimentos();
 
   // orçamento actual
-  const [budget, setBudget] = useState<number>(1000);
-  const [budgetModalVisible, setBudgetModalVisible] = useState(false);
-  const [budgetInput, setBudgetInput] = useState<string>(budget.toString());
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
 
+const [budget, setBudgetValue] = useState<number>(1000);
+const [budgetModalVisible, setBudgetModalVisible] = useState(false);
+const [budgetInput, setBudgetInput] = useState<string>("1000");
   // carregar orçamento gravado em SQLite ao abrir o ecrã
   useEffect(() => {
-    (async () => {
-      try {
-        const stored = await getStoredBudget();
-        if (stored !== null && Number.isFinite(stored)) {
-          setBudget(stored);
-          setBudgetInput(stored.toString());
-        }
-      } catch (error) {
-        console.warn("Erro ao carregar orçamento guardado:", error);
+  (async () => {
+    try {
+      const key = monthKey(currentMonth.toISOString());
+      const stored = await getBudget(key);
+
+      if (stored !== null && Number.isFinite(stored)) {
+        setBudgetValue(stored);
+        setBudgetInput(String(stored));
+      } else {
+        setBudgetInput(String(budget));
       }
-    })();
-  }, []);
+    } catch (error) {
+      console.warn("Erro ao carregar orçamento:", error);
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [currentMonth]);
+
 
   const movements = movimentos.map((m) => ({
     id: m.id,
@@ -78,7 +86,7 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
     amount: m.amount,
   }));
 
-  const [currentMonth, setCurrentMonth] = useState<Date>(() => new Date());
+  
   const [pickerVisible, setPickerVisible] = useState(false);
   const [tempMonthIndex, setTempMonthIndex] = useState<number>(
     currentMonth.getMonth()
@@ -190,20 +198,23 @@ export default function FinanceScreen({ navigation }: FinanceScreenProps) {
   }
 
   async function confirmBudget() {
-    const normalized = budgetInput.replace(",", ".").trim();
-    const value = Number(normalized);
+  const normalized = budgetInput.replace(",", ".").trim();
+  const value = Number(normalized);
 
-    if (Number.isFinite(value) && value >= 0) {
-      try {
-        setBudget(value);
-        await saveBudget(value);
-      } catch (error) {
-        console.warn("Erro ao guardar orçamento em SQLite:", error);
-      }
+  if (Number.isFinite(value) && value >= 0) {
+    try {
+      const key = monthKey(currentMonth.toISOString());
+      setBudgetValue(value);
+      await setBudget(key, value);
+    } catch (error) {
+      console.warn("Erro ao guardar orçamento:", error);
     }
-
-    setBudgetModalVisible(false);
   }
+
+  setBudgetModalVisible(false);
+}
+
+
 
   const saldoDisponivel = budget - totals.expenses;
 

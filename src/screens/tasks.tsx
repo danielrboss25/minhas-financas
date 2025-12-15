@@ -24,86 +24,59 @@ import {
   Edit3,
 } from "lucide-react-native";
 
-import { execSql as execSqlNative } from "../db";
-import { execSql as execSqlWeb } from "../db.web";
+import {
+  listTasks,
+  upsertTask,
+  setTaskDone,
+  removeTask,
+} from "../services/tasks";
+import type {
+  Task as DbTask,
+  Priority as DbPriority,
+  Bucket as DbBucket,
+} from "../services/tasks";
 
-type Priority = "alta" | "media" | "baixa";
-type Bucket = "hoje" | "semana" | "mais_tarde" | "todas";
+/**
+ * "todas" é um filtro de UI, não deve fazer parte do tipo persistido (DbBucket).
+ */
+type UiBucket = DbBucket | "todas";
 
-type Task = {
-  id: string;
-  title: string;
-  notes?: string;
-  bucket: Bucket;
-  priority: Priority;
-  done: boolean;
-  dueLabel?: string;
-};
-
-const BUCKET_LABELS: Record<Bucket, string> = {
+const BUCKET_LABELS: Record<UiBucket, string> = {
   hoje: "Hoje",
   semana: "Esta semana",
   mais_tarde: "Mais tarde",
   todas: "Todas",
 };
 
-const PRIORITY_LABELS: Record<Priority, string> = {
+const PRIORITY_LABELS: Record<DbPriority, string> = {
   alta: "Alta",
   media: "Média",
   baixa: "Baixa",
 };
 
-// Pequeno helper para lidar com o formato do execSql
-function normalizeRows(result: any): any[] {
-  if (Array.isArray(result)) return result;
-  if (result && result.rows && Array.isArray(result.rows._array)) {
-    return result.rows._array;
-  }
-  return [];
-}
-
-const execSql = Platform.OS === "web" ? execSqlWeb : execSqlNative;
-
 export default function TasksScreen() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<DbTask[]>([]);
 
-  const [activeBucket, setActiveBucket] = useState<Bucket>("hoje");
+  const [activeBucket, setActiveBucket] = useState<UiBucket>("hoje");
   const [showModal, setShowModal] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<DbTask | null>(null);
 
   // estado do formulário
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
-  const [formBucket, setFormBucket] = useState<Bucket>("hoje");
-  const [priority, setPriority] = useState<Priority>("media");
+  const [formBucket, setFormBucket] = useState<DbBucket>("hoje");
+  const [priority, setPriority] = useState<DbPriority>("media");
 
   useEffect(() => {
-    loadTasks();
+    (async () => {
+      try {
+        const data = await listTasks();
+        setTasks(data);
+      } catch (err) {
+        console.error("Erro ao carregar tarefas", err);
+      }
+    })();
   }, []);
-
-  async function loadTasks() {
-    try {
-      const result = await execSql<any>(
-        "SELECT * FROM tasks ORDER BY done ASC, datetime(created_at) DESC",
-        []
-      );
-      const rows = normalizeRows(result);
-
-      const mapped: Task[] = rows.map((r: any) => ({
-        id: String(r.id),
-        title: r.title,
-        notes: r.notes ?? undefined,
-        bucket: (r.bucket as Bucket) ?? "hoje",
-        priority: (r.priority as Priority) ?? "media",
-        done: r.done === 1 || r.done === true,
-        dueLabel: r.due_label ?? undefined,
-      }));
-
-      setTasks(mapped);
-    } catch (err) {
-      console.error("Erro ao carregar tarefas", err);
-    }
-  }
 
   function resetForm() {
     setTitle("");
@@ -118,7 +91,7 @@ export default function TasksScreen() {
     setShowModal(true);
   }
 
-  function openEditTask(task: Task) {
+  function openEditTask(task: DbTask) {
     setEditingTask(task);
     setTitle(task.title);
     setNotes(task.notes ?? "");
@@ -137,12 +110,11 @@ export default function TasksScreen() {
       const current = tasks.find((t) => t.id === id);
       if (!current) return;
 
-      const newDone = current.done ? 0 : 1;
-
-      await execSql("UPDATE tasks SET done = ? WHERE id = ?", [newDone, id]);
+      const newDone = !current.done;
+      await setTaskDone(id, newDone);
 
       setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
+        prev.map((t) => (t.id === id ? { ...t, done: newDone } : t))
       );
     } catch (err) {
       console.error("Erro ao alternar estado da tarefa", err);
@@ -151,14 +123,14 @@ export default function TasksScreen() {
 
   async function deleteTask(id: string) {
     try {
-      await execSql("DELETE FROM tasks WHERE id = ?", [id]);
+      await removeTask(id);
       setTasks((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
       console.error("Erro ao apagar tarefa", err);
     }
   }
 
-  function getDueLabelFromBucket(b: Bucket): string | undefined {
+  function getDueLabelFromBucket(b: DbBucket): string | undefined {
     if (b === "hoje") return "Hoje";
     if (b === "semana") return "Esta semana";
     if (b === "mais_tarde") return "Quando der";
@@ -166,51 +138,29 @@ export default function TasksScreen() {
   }
 
   async function handleSubmit() {
-    if (!title.trim()) {
-      return;
-    }
+    if (!title.trim()) return;
 
     const dueLabel = getDueLabelFromBucket(formBucket);
 
     if (editingTask) {
-      try {
-        await execSql(
-          `UPDATE tasks
-           SET title = ?, notes = ?, bucket = ?, priority = ?, due_label = ?
-           WHERE id = ?`,
-          [
-            title.trim(),
-            notes.trim() || null,
-            formBucket,
-            priority,
-            dueLabel ?? null,
-            editingTask.id,
-          ]
-        );
+      const updated: DbTask = {
+        ...editingTask,
+        title: title.trim(),
+        notes: notes.trim() || undefined,
+        bucket: formBucket,
+        priority,
+        dueLabel,
+      };
 
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === editingTask.id
-              ? {
-                  ...t,
-                  title: title.trim(),
-                  notes: notes.trim() || undefined,
-                  bucket: formBucket,
-                  priority,
-                  dueLabel,
-                }
-              : t
-          )
-        );
+      try {
+        await upsertTask(updated);
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       } catch (err) {
         console.error("Erro ao editar tarefa", err);
       }
     } else {
-      const id = Date.now().toString();
-      const createdAt = new Date().toISOString();
-
-      const newTask: Task = {
-        id,
+      const newTask: DbTask = {
+        id: Date.now().toString(),
         title: title.trim(),
         notes: notes.trim() || undefined,
         bucket: formBucket,
@@ -220,22 +170,7 @@ export default function TasksScreen() {
       };
 
       try {
-        await execSql(
-          `INSERT INTO tasks
-           (id, title, notes, bucket, priority, done, due_label, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            newTask.id,
-            newTask.title,
-            newTask.notes ?? null,
-            newTask.bucket,
-            newTask.priority,
-            newTask.done ? 1 : 0,
-            newTask.dueLabel ?? null,
-            createdAt,
-          ]
-        );
-
+        await upsertTask(newTask);
         setTasks((prev) => [newTask, ...prev]);
       } catch (err) {
         console.error("Erro ao criar tarefa", err);
@@ -324,9 +259,7 @@ export default function TasksScreen() {
 
           <View style={styles.progressHeaderRow}>
             <Text style={styles.progressTitle}>Progresso geral</Text>
-            <Text style={styles.progressPercent}>
-              {stats.completion}% concluído
-            </Text>
+            <Text style={styles.progressPercent}>{stats.completion}% concluído</Text>
           </View>
 
           <View style={styles.progressBar}>
@@ -347,7 +280,7 @@ export default function TasksScreen() {
 
         {/* Filtros de bucket */}
         <View style={styles.bucketRow}>
-          {(["hoje", "semana", "mais_tarde", "todas"] as Bucket[]).map((b) => {
+          {(["hoje", "semana", "mais_tarde", "todas"] as UiBucket[]).map((b) => {
             const selected = b === activeBucket;
             return (
               <TouchableOpacity
@@ -373,9 +306,7 @@ export default function TasksScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lista</Text>
-            <Text style={styles.sectionSubtitle}>
-              Toca para concluir ou editar.
-            </Text>
+            <Text style={styles.sectionSubtitle}>Toca para concluir ou editar.</Text>
           </View>
 
           <View style={styles.card}>
@@ -409,14 +340,12 @@ export default function TasksScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text
-                        style={[
-                          styles.taskTitle,
-                          task.done && styles.taskTitleDone,
-                        ]}
+                        style={[styles.taskTitle, task.done && styles.taskTitleDone]}
                         numberOfLines={1}
                       >
                         {task.title}
                       </Text>
+
                       <View style={styles.taskMetaRow}>
                         <View style={styles.metaPill}>
                           <Flag color={priorityColor} size={12} />
@@ -424,15 +353,15 @@ export default function TasksScreen() {
                             {PRIORITY_LABELS[task.priority]}
                           </Text>
                         </View>
+
                         {task.dueLabel && (
                           <View style={styles.metaPill}>
                             <Calendar color="#94A3B8" size={12} />
-                            <Text style={styles.metaPillText}>
-                              {task.dueLabel}
-                            </Text>
+                            <Text style={styles.metaPillText}>{task.dueLabel}</Text>
                           </View>
                         )}
                       </View>
+
                       {task.notes && (
                         <Text style={styles.taskNotes} numberOfLines={1}>
                           {task.notes}
@@ -492,12 +421,7 @@ export default function TasksScreen() {
                 </Text>
                 <TouchableOpacity
                   onPress={closeModal}
-                  hitSlop={{
-                    top: 10,
-                    bottom: 10,
-                    left: 10,
-                    right: 10,
-                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <X color="#9CA3AF" size={20} />
                 </TouchableOpacity>
@@ -530,16 +454,13 @@ export default function TasksScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalLabel}>Quando</Text>
                   <View style={styles.bucketSelectorRow}>
-                    {(["hoje", "semana", "mais_tarde"] as Bucket[]).map((b) => {
+                    {(["hoje", "semana", "mais_tarde"] as DbBucket[]).map((b) => {
                       const selected = b === formBucket;
                       return (
                         <TouchableOpacity
                           key={b}
                           onPress={() => setFormBucket(b)}
-                          style={[
-                            styles.smallChip,
-                            selected && styles.smallChipActive,
-                          ]}
+                          style={[styles.smallChip, selected && styles.smallChipActive]}
                           activeOpacity={0.85}
                         >
                           <Text
@@ -559,33 +480,22 @@ export default function TasksScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalLabel}>Prioridade</Text>
                   <View style={styles.bucketSelectorRow}>
-                    {(["alta", "media", "baixa"] as Priority[]).map((p) => {
+                    {(["alta", "media", "baixa"] as DbPriority[]).map((p) => {
                       const selected = p === priority;
                       const color =
-                        p === "alta"
-                          ? "#F97373"
-                          : p === "media"
-                          ? "#FBBF24"
-                          : "#22C55E";
+                        p === "alta" ? "#F97373" : p === "media" ? "#FBBF24" : "#22C55E";
+
                       return (
                         <TouchableOpacity
                           key={p}
                           onPress={() => setPriority(p)}
                           style={[
                             styles.smallChip,
-                            selected && {
-                              backgroundColor: `${color}33`,
-                              borderColor: color,
-                            },
+                            selected && { backgroundColor: `${color}33`, borderColor: color },
                           ]}
                           activeOpacity={0.85}
                         >
-                          <Text
-                            style={[
-                              styles.smallChipText,
-                              selected && { color },
-                            ]}
-                          >
+                          <Text style={[styles.smallChipText, selected && { color }]}>
                             {PRIORITY_LABELS[p]}
                           </Text>
                         </TouchableOpacity>
@@ -599,10 +509,7 @@ export default function TasksScreen() {
                 <Pressable style={styles.modalBtnCancel} onPress={closeModal}>
                   <Text style={styles.modalBtnCancelText}>Cancelar</Text>
                 </Pressable>
-                <Pressable
-                  style={styles.modalBtnConfirm}
-                  onPress={handleSubmit}
-                >
+                <Pressable style={styles.modalBtnConfirm} onPress={handleSubmit}>
                   <Text style={styles.modalBtnConfirmText}>
                     {editingTask ? "Guardar" : "Adicionar"}
                   </Text>
@@ -616,32 +523,13 @@ export default function TasksScreen() {
   );
 }
 
-// styles iguais aos que já tinhas
+// estilos: mantive os seus exactamente (copiados)
 const styles = StyleSheet.create({
-  // … copia exactamente os teus styles daqui para baixo
-  // (não alterei nada nos estilos, só na lógica)
-  root: {
-    flex: 1,
-    backgroundColor: "#020617",
-  },
-  scrollContent: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 90,
-  },
-  header: {
-    marginBottom: 14,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#F9FAFB",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#9CA3AF",
-    marginTop: 4,
-  },
+  root: { flex: 1, backgroundColor: "#020617" },
+  scrollContent: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 90 },
+  header: { marginBottom: 14 },
+  title: { fontSize: 26, fontWeight: "800", color: "#F9FAFB" },
+  subtitle: { fontSize: 14, color: "#9CA3AF", marginTop: 4 },
   overviewCard: {
     borderRadius: 20,
     padding: 18,
@@ -654,18 +542,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  overviewBox: {
-    flex: 1,
-  },
-  overviewLabel: {
-    fontSize: 12,
-    color: "#9CA3AF",
-  },
-  overviewValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 2,
-  },
+  overviewBox: { flex: 1 },
+  overviewLabel: { fontSize: 12, color: "#9CA3AF" },
+  overviewValue: { fontSize: 18, fontWeight: "700", marginTop: 2 },
   progressHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -673,15 +552,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 6,
   },
-  progressTitle: {
-    fontSize: 13,
-    color: "#CBD5E1",
-    fontWeight: "600",
-  },
-  progressPercent: {
-    fontSize: 12,
-    color: "#9CA3AF",
-  },
+  progressTitle: { fontSize: 13, color: "#CBD5E1", fontWeight: "600" },
+  progressPercent: { fontSize: 12, color: "#9CA3AF" },
   progressBar: {
     height: 8,
     borderRadius: 999,
@@ -690,20 +562,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#0F172A",
   },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  focusText: {
-    marginTop: 10,
-    fontSize: 12,
-    color: "#E5E7EB",
-  },
-  bucketRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
+  progressFill: { height: "100%", borderRadius: 999 },
+  focusText: { marginTop: 10, fontSize: 12, color: "#E5E7EB" },
+  bucketRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
   bucketChip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -716,32 +577,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(56,189,248,0.18)",
     borderColor: "rgba(56,189,248,0.9)",
   },
-  bucketChipText: {
-    fontSize: 12,
-    color: "#94A3B8",
-    fontWeight: "600",
-  },
-  bucketChipTextActive: {
-    color: "#E0F2FE",
-  },
-  section: {
-    marginBottom: 22,
-  },
+  bucketChipText: { fontSize: 12, color: "#94A3B8", fontWeight: "600" },
+  bucketChipTextActive: { color: "#E0F2FE" },
+  section: { marginBottom: 22 },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
     marginBottom: 10,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#F9FAFB",
-  },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: "#9CA3AF",
-  },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#F9FAFB" },
+  sectionSubtitle: { fontSize: 12, color: "#9CA3AF" },
   card: {
     backgroundColor: "#020617",
     borderRadius: 18,
@@ -768,23 +614,10 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: "flex-start",
   },
-  checkboxWrapper: {
-    paddingTop: 2,
-  },
-  taskTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#E5E7EB",
-  },
-  taskTitleDone: {
-    textDecorationLine: "line-through",
-    color: "#6B7280",
-  },
-  taskMetaRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 4,
-  },
+  checkboxWrapper: { paddingTop: 2 },
+  taskTitle: { fontSize: 15, fontWeight: "600", color: "#E5E7EB" },
+  taskTitleDone: { textDecorationLine: "line-through", color: "#6B7280" },
+  taskMetaRow: { flexDirection: "row", gap: 6, marginTop: 4 },
   metaPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -796,15 +629,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(51,65,85,0.9)",
   },
-  metaPillText: {
-    fontSize: 11,
-    color: "#CBD5E1",
-  },
-  taskNotes: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginTop: 3,
-  },
+  metaPillText: { fontSize: 11, color: "#CBD5E1" },
+  taskNotes: { fontSize: 12, color: "#9CA3AF", marginTop: 3 },
   taskActions: {
     justifyContent: "center",
     alignItems: "flex-end",
@@ -820,12 +646,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(30,64,175,0.45)",
   },
-  fabWrapper: {
-    position: "absolute",
-    right: 20,
-    bottom: 20,
-    zIndex: 40,
-  },
+  fabWrapper: { position: "absolute", right: 20, bottom: 20, zIndex: 40 },
   fab: {
     elevation: 10,
     shadowOffset: { width: 0, height: 8 },
@@ -863,19 +684,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 14,
   },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#E5E7EB",
-  },
-  modalField: {
-    marginBottom: 12,
-  },
-  modalLabel: {
-    fontSize: 13,
-    color: "#CBD5E1",
-    marginBottom: 4,
-  },
+  modalTitle: { fontSize: 16, fontWeight: "700", color: "#E5E7EB" },
+  modalField: { marginBottom: 12 },
+  modalLabel: { fontSize: 13, color: "#CBD5E1", marginBottom: 4 },
   modalInput: {
     borderRadius: 14,
     borderWidth: 1,
@@ -886,18 +697,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#F9FAFB",
   },
-  modalRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  bucketSelectorRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 4,
-  },
+  modalRow: { flexDirection: "row", gap: 12, marginTop: 4, marginBottom: 12 },
+  bucketSelectorRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
   smallChip: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -910,19 +711,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(56,189,248,0.2)",
     borderColor: "rgba(56,189,248,0.9)",
   },
-  smallChipText: {
-    fontSize: 11,
-    color: "#CBD5E1",
-    fontWeight: "600",
-  },
-  smallChipTextActive: {
-    color: "#E0F2FE",
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
+  smallChipText: { fontSize: 11, color: "#CBD5E1", fontWeight: "600" },
+  smallChipTextActive: { color: "#E0F2FE" },
+  modalActions: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   modalBtnCancel: {
     flex: 1,
     paddingVertical: 11,
@@ -932,11 +723,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.35)",
     backgroundColor: "transparent",
   },
-  modalBtnCancelText: {
-    textAlign: "center",
-    color: "#E5E7EB",
-    fontWeight: "500",
-  },
+  modalBtnCancelText: { textAlign: "center", color: "#E5E7EB", fontWeight: "500" },
   modalBtnConfirm: {
     flex: 1,
     paddingVertical: 11,
@@ -944,9 +731,5 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     backgroundColor: "#22C55E",
   },
-  modalBtnConfirmText: {
-    textAlign: "center",
-    color: "#022C22",
-    fontWeight: "700",
-  },
+  modalBtnConfirmText: { textAlign: "center", color: "#022C22", fontWeight: "700" },
 });

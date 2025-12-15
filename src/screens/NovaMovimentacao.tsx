@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
   // *** REMOVIDO: Alert ***
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -18,7 +19,7 @@ import { ArrowLeft, Save, X } from "lucide-react-native";
 import { format } from "date-fns";
 import { pt } from "date-fns/locale";
 // Adicionando Alert de volta, mas usando apenas no erro para não quebrar a importação
-import { Alert } from "react-native";
+
 import { useMovimentos } from "../context/MovimentosContext";
 
 export default function NovaMovimentacaoScreen({ navigation }: any) {

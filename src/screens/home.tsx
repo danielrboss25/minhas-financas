@@ -171,7 +171,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <TouchableOpacity
                 style={[styles.radarCard, { marginRight: 10 }]}
                 activeOpacity={0.9}
-                onPress={() => navigation.navigate("FinancasStack")}
+                onPress={() => navigation.navigate("Financas")}
               >
                 <View style={styles.radarIconCircle}>
                   <Wallet color="#22C55E" size={20} />
@@ -280,7 +280,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <TouchableOpacity
                 style={{ flex: 1 }}
                 activeOpacity={0.9}
-                onPress={() => navigation.navigate("FinancasStack")}
+                onPress={() => navigation.navigate("Financas")}
               >
                 <View style={styles.moduleIconRow}>
                   <View style={styles.moduleIconBadge}>

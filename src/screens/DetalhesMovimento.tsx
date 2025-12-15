@@ -20,16 +20,13 @@ type DetalhesMovimentoScreenProps = {
   navigation: any;
 };
 
-function DetalhesMovimentoScreen({
-  route,
-  navigation,
-}: DetalhesMovimentoScreenProps) {
+function DetalhesMovimentoScreen({ route, navigation }: DetalhesMovimentoScreenProps) {
   const { id } = route.params;
   const { movimentos, updateMovimento } = useMovimentos();
 
   const movimento = movimentos.find((m) => m.id === id);
 
-  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [date, setDate] = useState("");
   const [amount, setAmount] = useState("");
@@ -50,14 +47,10 @@ function DetalhesMovimentoScreen({
 
   useEffect(() => {
     if (movimento) {
-      setTitle(movimento.title ?? "");
+      setDescription(movimento.description ?? "");
       setCategory(movimento.category ?? "");
-      if (movimento.date) {
-        setDate(movimento.date);
-      } else {
-        setDate(formatDate(new Date()));
-      }
-      setAmount(String(movimento.amount));
+      setDate(movimento.date ? movimento.date : formatDate(new Date()));
+      setAmount(String(movimento.amount ?? ""));
     }
   }, [movimento]);
 
@@ -65,15 +58,17 @@ function DetalhesMovimentoScreen({
     if (!movimento) return;
 
     const parsedAmount = Number(String(amount).replace(",", "."));
-    const finalAmount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      // validação mínima (se quiseres Alert aqui, adiciona-o)
+      return;
+    }
 
     try {
       await updateMovimento(movimento.id, {
-        title: title.trim() || "Sem descrição",
-        description: title.trim() || "",
+        description: description.trim() || "Sem descrição",
         category: category.trim() || "Sem categoria",
         date: date || formatDate(new Date()),
-        amount: finalAmount,
+        amount: parsedAmount,
       });
 
       navigation.goBack();
@@ -83,12 +78,8 @@ function DetalhesMovimentoScreen({
   }
 
   function onChangeDate(_: any, selected?: Date) {
-    if (Platform.OS !== "ios") {
-      setShowDatePicker(false);
-    }
-    if (selected) {
-      setDate(formatDate(selected));
-    }
+    if (Platform.OS !== "ios") setShowDatePicker(false);
+    if (selected) setDate(formatDate(selected));
   }
 
   if (!movimento) {
@@ -128,17 +119,15 @@ function DetalhesMovimentoScreen({
       >
         <View style={styles.card}>
           <Text style={styles.label}>Tipo</Text>
-          <Text
-            style={[styles.value, { color: isIncome ? "#22C55E" : "#F97373" }]}
-          >
+          <Text style={[styles.value, { color: isIncome ? "#22C55E" : "#F97373" }]}>
             {isIncome ? "Entrada" : "Despesa"}
           </Text>
 
           <Text style={styles.label}>Descrição</Text>
           <TextInput
             style={styles.input}
-            value={title}
-            onChangeText={setTitle}
+            value={description}
+            onChangeText={setDescription}
             placeholder="Descrição"
             placeholderTextColor="#6B7280"
           />
@@ -153,14 +142,7 @@ function DetalhesMovimentoScreen({
           />
 
           <Text style={[styles.label, { marginTop: 12 }]}>Data</Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 8,
-            }}
-          >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.dateTag}
@@ -189,11 +171,7 @@ function DetalhesMovimentoScreen({
             placeholderTextColor="#6B7280"
           />
 
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={handleSave}
-            style={{ marginTop: 20 }}
-          >
+          <TouchableOpacity activeOpacity={0.9} onPress={handleSave} style={{ marginTop: 20 }}>
             <LinearGradient
               colors={["#22C55E", "#3B82F6"]}
               start={{ x: 0, y: 0 }}
@@ -210,10 +188,7 @@ function DetalhesMovimentoScreen({
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#020617",
-  },
+  root: { flex: 1, backgroundColor: "#020617" },
   header: {
     paddingTop: 48,
     paddingBottom: 20,
@@ -232,11 +207,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
     backgroundColor: "rgba(15,23,42,0.9)",
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#F9FAFB",
-  },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#F9FAFB" },
   card: {
     backgroundColor: "#020617",
     borderRadius: 18,
@@ -244,17 +215,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.9)",
   },
-  label: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginTop: 10,
-  },
-  value: {
-    fontSize: 15,
-    color: "#E5E7EB",
-    fontWeight: "600",
-    marginTop: 2,
-  },
+  label: { fontSize: 12, color: "#9CA3AF", marginTop: 10 },
+  value: { fontSize: 15, color: "#E5E7EB", fontWeight: "600", marginTop: 2 },
   input: {
     marginTop: 4,
     backgroundColor: "#020617",
@@ -275,11 +237,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
   },
-  saveButtonText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#F9FAFB",
-  },
+  saveButtonText: { fontSize: 15, fontWeight: "700", color: "#F9FAFB" },
   dateTag: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -288,11 +246,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.18)",
   },
-  dateTagText: {
-    color: "#E5E7EB",
-    fontWeight: "600",
-    fontSize: 13,
-  },
+  dateTagText: { color: "#E5E7EB", fontWeight: "600", fontSize: 13 },
 });
 
 export default DetalhesMovimentoScreen;

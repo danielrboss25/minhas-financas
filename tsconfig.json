@@ -4,5 +4,6 @@
     //"strict": true
     "noImplicitAny": false
     
-  }
+  },
+  "include": ["src", "App.tsx", "src/types/**/*.d.ts"]
 }
